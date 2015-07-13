@@ -16,7 +16,7 @@
 
 #include "cxl.h"
 
-struct cxl_context *cxl_dev_context_init(struct pci_dev *dev)
+struct cxl_context *cxl_dev_context_init_reserved_pe(struct pci_dev *dev, int reserved_pe)
 {
 	struct address_space *mapping;
 	struct cxl_afu *afu;
@@ -24,6 +24,8 @@ struct cxl_context *cxl_dev_context_init(struct pci_dev *dev)
 	int rc;
 
 	afu = cxl_pci_to_afu(dev);
+	if (IS_ERR(afu))
+		return ERR_CAST(afu);
 
 	ctx = cxl_context_alloc();
 	if (IS_ERR(ctx)) {
@@ -47,7 +49,7 @@ struct cxl_context *cxl_dev_context_init(struct pci_dev *dev)
 	address_space_init_once(mapping);
 
 	/* Make it a slave context.  We can promote it later? */
-	rc = cxl_context_init(ctx, afu, false, mapping);
+	rc = cxl_context_init(ctx, afu, false, mapping, reserved_pe);
 	if (rc)
 		goto err_mapping;
 
@@ -60,13 +62,18 @@ err_ctx:
 err_dev:
 	return ERR_PTR(rc);
 }
+
+struct cxl_context *cxl_dev_context_init(struct pci_dev *dev)
+{
+	return cxl_dev_context_init_reserved_pe(dev, -1);
+}
 EXPORT_SYMBOL_GPL(cxl_dev_context_init);
 
-struct cxl_context *cxl_get_context(struct pci_dev *dev)
+struct cxl_context *_cxl_get_context(struct pci_dev *dev)
 {
 	return dev->dev.archdata.cxl_ctx;
 }
-EXPORT_SYMBOL_GPL(cxl_get_context);
+/* exported via cxl_base */
 
 int cxl_release_context(struct cxl_context *ctx)
 {
@@ -79,7 +86,7 @@ int cxl_release_context(struct cxl_context *ctx)
 }
 EXPORT_SYMBOL_GPL(cxl_release_context);
 
-static irq_hw_number_t cxl_find_afu_irq(struct cxl_context *ctx, int num)
+irq_hw_number_t _cxl_afu_irq_to_hwirq(struct cxl_context *ctx, int num)
 {
 	__u16 range;
 	int r;
@@ -93,8 +100,9 @@ static irq_hw_number_t cxl_find_afu_irq(struct cxl_context *ctx, int num)
 	}
 	return 0;
 }
+/* exported via cxl_base */
 
-int cxl_allocate_afu_irqs(struct cxl_context *ctx, int num)
+int _cxl_allocate_afu_irqs(struct cxl_context *ctx, int num)
 {
 	int res;
 	irq_hw_number_t hwirq;
@@ -109,7 +117,7 @@ int cxl_allocate_afu_irqs(struct cxl_context *ctx, int num)
 		/* In a guest, the PSL interrupt is not multiplexed. It was
 		 * allocated above, and we need to set its handler
 		 */
-		hwirq = cxl_find_afu_irq(ctx, 0);
+		hwirq = cxl_afu_irq_to_hwirq(ctx, 0);
 		if (hwirq)
 			cxl_map_irq(ctx->afu->adapter, hwirq, cxl_ops->psl_interrupt, ctx, "psl");
 	}
@@ -122,15 +130,15 @@ int cxl_allocate_afu_irqs(struct cxl_context *ctx, int num)
 
 	return res;
 }
-EXPORT_SYMBOL_GPL(cxl_allocate_afu_irqs);
+/* exported via cxl_base */
 
-void cxl_free_afu_irqs(struct cxl_context *ctx)
+void _cxl_free_afu_irqs(struct cxl_context *ctx)
 {
 	irq_hw_number_t hwirq;
 	unsigned int virq;
 
 	if (!cpu_has_feature(CPU_FTR_HVMODE)) {
-		hwirq = cxl_find_afu_irq(ctx, 0);
+		hwirq = cxl_afu_irq_to_hwirq(ctx, 0);
 		if (hwirq) {
 			virq = irq_find_mapping(NULL, hwirq);
 			if (virq)
@@ -140,7 +148,7 @@ void cxl_free_afu_irqs(struct cxl_context *ctx)
 	afu_irq_name_free(ctx);
 	cxl_ops->release_irq_ranges(&ctx->irqs, ctx->afu->adapter);
 }
-EXPORT_SYMBOL_GPL(cxl_free_afu_irqs);
+/* exported via cxl_base */
 
 int cxl_map_afu_irq(struct cxl_context *ctx, int num,
 		    irq_handler_t handler, void *cookie, char *name)
@@ -150,7 +158,7 @@ int cxl_map_afu_irq(struct cxl_context *ctx, int num,
 	/*
 	 * Find interrupt we are to register.
 	 */
-	hwirq = cxl_find_afu_irq(ctx, num);
+	hwirq = cxl_afu_irq_to_hwirq(ctx, num);
 	if (!hwirq)
 		return -ENOENT;
 
@@ -163,7 +171,7 @@ void cxl_unmap_afu_irq(struct cxl_context *ctx, int num, void *cookie)
 	irq_hw_number_t hwirq;
 	unsigned int virq;
 
-	hwirq = cxl_find_afu_irq(ctx, num);
+	hwirq = cxl_afu_irq_to_hwirq(ctx, num);
 	if (!hwirq)
 		return;
 
@@ -211,11 +219,11 @@ out:
 }
 EXPORT_SYMBOL_GPL(cxl_start_context);
 
-int cxl_process_element(struct cxl_context *ctx)
+int _cxl_process_element(struct cxl_context *ctx)
 {
 	return ctx->external_pe;
 }
-EXPORT_SYMBOL_GPL(cxl_process_element);
+/* exported via cxl_base */
 
 /* Stop a context.  Returns 0 on success, otherwise -Errno */
 int cxl_stop_context(struct cxl_context *ctx)
@@ -400,6 +408,8 @@ EXPORT_SYMBOL_GPL(cxl_perst_reloads_same_image);
 ssize_t cxl_read_adapter_vpd(struct pci_dev *dev, void *buf, size_t count)
 {
 	struct cxl_afu *afu = cxl_pci_to_afu(dev);
+	if (IS_ERR(afu))
+		return -ENODEV;
 
 	return cxl_ops->read_adapter_vpd(afu->adapter, buf, count);
 }
