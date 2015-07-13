@@ -1,6 +1,12 @@
 #ifndef __POWERNV_PCI_H
 #define __POWERNV_PCI_H
 
+#include <linux/iommu.h>
+
+#include <asm/iommu.h>
+#include <asm/msi_bitmap.h>
+#include <asm/opal-api.h>
+
 struct pci_dn;
 
 enum pnv_phb_type {
@@ -71,7 +77,9 @@ struct pnv_ioda_pe {
 	struct list_head	list;
 };
 
-#define PNV_PHB_FLAG_EEH	(1 << 0)
+#define PNV_PHB_FLAG_EEH		(1 << 0)
+#define PNV_PHB_FLAG_CXL		(1 << 1) /* PHB supporting the cxl kernel2 api */
+#define PNV_PHB_FLAG_CXL_QUIRK_CX4	(1 << 2) /* Mellanox CX4 card in cxl mode */
 
 struct pnv_phb {
 	struct pci_controller	*hose;
@@ -173,6 +181,9 @@ struct pnv_phb {
 		struct OpalIoP7IOCErrorData 	hub_diag;
 	} diag;
 
+#ifdef CONFIG_CXL_BASE
+	struct cxl_afu *cxl_afu;
+#endif
 };
 
 extern struct pci_ops pnv_pci_ops;
@@ -231,5 +242,14 @@ extern long pnv_npu_set_window(struct pnv_ioda_pe *npe, int num,
 extern long pnv_npu_unset_window(struct pnv_ioda_pe *npe, int num);
 extern void pnv_npu_take_ownership(struct pnv_ioda_pe *npe);
 extern void pnv_npu_release_ownership(struct pnv_ioda_pe *npe);
+
+
+/* cxl functions */
+bool pnv_cxl_enable_device_hook(struct pci_dev *dev, struct pnv_phb *phb);
+
+
+/* phb ops (cxl switches these when enabling the cxl kernel2 api) */
+extern const struct pci_controller_ops pnv_cxl_cx4_ioda_controller_ops;
+extern const struct pci_controller_ops pnv_pci_ioda_controller_ops;
 
 #endif /* __POWERNV_PCI_H */
