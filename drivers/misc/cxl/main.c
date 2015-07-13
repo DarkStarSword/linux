@@ -99,8 +99,10 @@ static inline void cxl_slbia_core(struct mm_struct *mm)
 			if (!afu || !afu->enabled)
 				continue;
 			rcu_read_lock();
-			idr_for_each_entry(&afu->contexts_idr, ctx, id)
-				_cxl_slbia(ctx, mm);
+			idr_for_each_entry(&afu->contexts_idr, ctx, id) {
+				if (ctx)
+					_cxl_slbia(ctx, mm);
+			}
 			rcu_read_unlock();
 		}
 		spin_unlock(&adapter->afu_list_lock);
@@ -110,6 +112,10 @@ static inline void cxl_slbia_core(struct mm_struct *mm)
 
 static struct cxl_calls cxl_calls = {
 	.cxl_slbia = cxl_slbia_core,
+	.cxl_pci_associate_default_context = _cxl_pci_associate_default_context,
+	.cxl_next_msi_hwirq = _cxl_next_msi_hwirq,
+	.cxl_cx4_setup_msi_irqs = _cxl_cx4_setup_msi_irqs,
+	.cxl_cx4_teardown_msi_irqs = _cxl_cx4_teardown_msi_irqs,
 	.owner = THIS_MODULE,
 };
 
