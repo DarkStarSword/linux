@@ -46,6 +46,7 @@
 #include <linux/debugfs.h>
 #include <linux/kmod.h>
 #include <linux/mlx5/mlx5_ifc.h>
+#include <misc/cxl.h>
 #include "mlx5_core.h"
 
 MODULE_AUTHOR("Eli Cohen <eli@mellanox.com>");
@@ -1044,6 +1045,16 @@ static int init_one(struct pci_dev *pdev,
 	struct mlx5_core_dev *dev;
 	struct mlx5_priv *priv;
 	int err;
+	int rc;
+
+	rc = cxl_check_and_switch_mode(pdev, CXL_BIMODE_CXL, 0);
+	switch (rc) {
+		case 0:      /* Card is already in CXL mode and CXL driver will match */
+		case -EBUSY: /* CXL driver will hot unplug us */
+			return -EBUSY;
+		case -ENODEV: /* Card does not have a CXL VSEC */
+			break;
+	}
 
 	dev = kzalloc(sizeof(*dev), GFP_KERNEL);
 	if (!dev) {
