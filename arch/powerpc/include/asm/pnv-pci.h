@@ -38,6 +38,14 @@ int pnv_cxl_alloc_hwirq_ranges(struct cxl_irq_ranges *irqs,
 			       struct pci_dev *dev, int num);
 void pnv_cxl_release_hwirq_ranges(struct cxl_irq_ranges *irqs,
 				  struct pci_dev *dev);
-#endif
 
-#endif
+
+/* cxl kernel2 api (i.e. Real PHB instead of virtual) */
+int pnv_cxl_enable_phb_kernel2_api(struct pci_controller *hose, bool enable);
+bool pnv_pci_on_cxl_phb(struct pci_dev *dev);
+struct cxl_afu *pnv_cxl_phb_to_afu(struct pci_controller *hose);
+void pnv_cxl_phb_set_peer_afu(struct pci_dev *dev, struct cxl_afu *afu);
+
+#endif /* CONFIG_CXL_BASE */
+
+#endif /* _ASM_PNV_PCI_H */

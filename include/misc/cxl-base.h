@@ -12,6 +12,9 @@
 
 #ifdef CONFIG_CXL_BASE
 
+#include <linux/pci.h>
+#include <misc/cxl.h>
+
 #define CXL_IRQ_RANGES 4
 
 struct cxl_irq_ranges {
@@ -39,6 +42,7 @@ static inline void cxl_ctx_put(void)
 struct cxl_afu *cxl_afu_get(struct cxl_afu *afu);
 void cxl_afu_put(struct cxl_afu *afu);
 void cxl_slbia(struct mm_struct *mm);
+bool cxl_pci_associate_default_context(struct pci_dev *dev, struct cxl_afu *afu);
 
 #else /* CONFIG_CXL_BASE */
 
@@ -46,6 +50,7 @@ static inline bool cxl_ctx_in_use(void) { return false; }
 static inline struct cxl_afu *cxl_afu_get(struct cxl_afu *afu) { return NULL; }
 static inline void cxl_afu_put(struct cxl_afu *afu) {}
 static inline void cxl_slbia(struct mm_struct *mm) {}
+static inline bool cxl_pci_associate_default_context(struct pci_dev *dev, struct cxl_afu *afu) { return false; }
 
 #endif /* CONFIG_CXL_BASE */
 
