@@ -564,15 +564,28 @@ static int wait_func(struct mlx5_core_dev *dev, struct mlx5_cmd_work_ent *ent)
 	struct mlx5_cmd *cmd = &dev->cmd;
 	int err;
 
-	if (cmd->mode == CMD_MODE_POLLING) {
-		wait_for_completion(&ent->done);
-		err = ent->ret;
-	} else {
+	/*
+	 * HACK: Always use short 5 second timeout while testing capi so we
+	 * don't get stuck here. This was hanging when called from
+	 * mlx5_create_map_eq(), and the cxl driver was waiting for this driver
+	 * to unbind.
+	 */
+	timeout = msecs_to_jiffies(5000);
+	mlx5_core_warn(dev, "%s(0x%x) Waiting for command to complete\n",
+			       mlx5_command_str(msg_to_opcode(ent->in)),
+			       msg_to_opcode(ent->in));
+
+	/*
+	 * if (cmd->mode == CMD_MODE_POLLING) {
+	 * 	wait_for_completion(&ent->done);
+	 * 	err = ent->ret;
+	 * } else {
+	 */
 		if (!wait_for_completion_timeout(&ent->done, timeout))
 			err = -ETIMEDOUT;
 		else
 			err = 0;
-	}
+	/* } */
 	if (err == -ETIMEDOUT) {
 		mlx5_core_warn(dev, "%s(0x%x) timeout. Will cause a leak of a command resource\n",
 			       mlx5_command_str(msg_to_opcode(ent->in)),

@@ -492,7 +492,10 @@ err2:
 	mlx5_destroy_unmap_eq(dev, &table->async_eq);
 
 err1:
-	mlx5_cmd_use_polling(dev);
+	/*
+	 * Disabled for CAPI testing due to hang on down():
+	 * mlx5_cmd_use_polling(dev);
+	 */
 	mlx5_destroy_unmap_eq(dev, &table->cmd_eq);
 	return err;
 }
