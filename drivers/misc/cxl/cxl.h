@@ -704,8 +704,23 @@ ssize_t cxl_pci_afu_read_err_buffer(struct cxl_afu *afu, char *buf,
 				loff_t off, size_t count);
 
 
+/* Internal functions wrapped in cxl_base to allow PHB to call them */
+bool _cxl_pci_associate_default_context(struct pci_dev *dev, struct cxl_afu *afu, int reserved_pe);
+struct cxl_context *_cxl_get_context(struct pci_dev *dev);
+int _cxl_allocate_afu_irqs(struct cxl_context *ctx, int num);
+irq_hw_number_t _cxl_afu_irq_to_hwirq(struct cxl_context *ctx, int num);
+int _cxl_process_element(struct cxl_context *ctx);
+void _cxl_free_afu_irqs(struct cxl_context *ctx);
+
 struct cxl_calls {
 	void (*cxl_slbia)(struct mm_struct *mm);
+	bool (*cxl_pci_associate_default_context)(struct pci_dev *dev, struct cxl_afu *afu, int reserved_pe);
+	struct cxl_context *(*cxl_get_context)(struct pci_dev *dev);
+	int (*cxl_allocate_afu_irqs)(struct cxl_context *ctx, int num);
+	irq_hw_number_t (*cxl_afu_irq_to_hwirq)(struct cxl_context *ctx, int num);
+	int (*cxl_process_element)(struct cxl_context *ctx);
+	void (*cxl_free_afu_irqs)(struct cxl_context *ctx);
+
 	struct module *owner;
 };
 int register_cxl_calls(struct cxl_calls *calls);
@@ -770,7 +785,7 @@ void init_cxl_native(void);
 
 struct cxl_context *cxl_context_alloc(void);
 int cxl_context_init(struct cxl_context *ctx, struct cxl_afu *afu, bool master,
-		     struct address_space *mapping);
+		     struct address_space *mapping, int reserved_pe);
 void cxl_context_free(struct cxl_context *ctx);
 int cxl_context_iomap(struct cxl_context *ctx, struct vm_area_struct *vma);
 unsigned int cxl_map_irq(struct cxl *adapter, irq_hw_number_t hwirq,
@@ -897,4 +912,7 @@ extern const struct cxl_backend_ops *cxl_ops;
 
 /* check if the given pci_dev is on the the cxl vphb bus */
 bool cxl_pci_is_vphb_device(struct pci_dev *dev);
+
+int cxl_reserve_pe(struct cxl_afu *afu, int id);
+struct cxl_context *cxl_dev_context_init_reserved_pe(struct pci_dev *dev, int reserved_pe);
 #endif

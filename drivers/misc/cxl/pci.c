@@ -7,6 +7,8 @@
  * 2 of the License, or (at your option) any later version.
  */
 
+#define DEBUG
+
 #include <linux/pci_regs.h>
 #include <linux/pci_ids.h>
 #include <linux/device.h>
@@ -19,7 +21,6 @@
 #include <linux/delay.h>
 #include <asm/opal.h>
 #include <asm/msi_bitmap.h>
-#include <asm/pci-bridge.h> /* for struct pci_controller */
 #include <asm/pnv-pci.h>
 #include <asm/io.h>
 #include <asm/reg.h>
@@ -610,30 +611,66 @@ static int setup_cxl_bars(struct pci_dev *dev)
 	return 0;
 }
 
-/* pciex node: ibm,opal-m64-window = <0x3d058 0x0 0x3d058 0x0 0x8 0x0>; */
-static int switch_card_to_cxl(struct pci_dev *dev)
-{
+struct cxl_switch_work {
+	struct pci_dev *dev;
+	struct work_struct work;
 	int vsec;
+	int mode;
+	int quirks;
+};
+
+static void switch_card_to_cxl(struct work_struct *work)
+{
+	struct cxl_switch_work *switch_work =
+		container_of(work, struct cxl_switch_work, work);
+	struct pci_dev *dev = switch_work->dev;
+	struct pci_bus *bus = dev->bus;
 	u8 val;
 	int rc;
 
-	dev_info(&dev->dev, "switch card to CXL\n");
+	dev_info(&bus->dev, "Removing PCI devices\n");
+	pci_lock_rescan_remove();
+	pcibios_remove_pci_devices(bus);
+	pci_unlock_rescan_remove();
 
-	if (!(vsec = find_cxl_vsec(dev))) {
-		dev_err(&dev->dev, "ABORTING: CXL VSEC not found!\n");
-		return -ENODEV;
+	/*
+	 * We still hold a ref on the device, but don't want to switch it's
+	 * mode until any other users are done, which should leave the refcount
+	 * at exactly 1 (ours).
+	 *
+	 * Alternatively, we could drop our ref and use low level config space
+	 * accessors once the device has been released from Linux.
+	 */
+	while (atomic_read(&dev->dev.kobj.kref.refcount) != 1) {
+		dev_info_ratelimited(&dev->dev,
+			"CXL mode switch waiting for refcount to drop...\n");
+		schedule_timeout(HZ/2);
 	}
 
-	if ((rc = CXL_READ_VSEC_MODE_CONTROL(dev, vsec, &val))) {
+	/*
+	 * Switch the CXL protocol on the card. We still hold a ref on the
+	 * struct pci_dev, so these functions are safe to use.
+	 */
+	if ((rc = CXL_READ_VSEC_MODE_CONTROL(dev, switch_work->vsec, &val))) {
 		dev_err(&dev->dev, "failed to read current mode control: %i", rc);
-		return rc;
+		goto err_put_dev;
 	}
-	val &= ~CXL_VSEC_PROTOCOL_MASK;
-	val |= CXL_VSEC_PROTOCOL_256TB | CXL_VSEC_PROTOCOL_ENABLE;
-	if ((rc = CXL_WRITE_VSEC_MODE_CONTROL(dev, vsec, val))) {
-		dev_err(&dev->dev, "failed to enable CXL protocol: %i", rc);
-		return rc;
+
+	if (switch_work->mode == CXL_BIMODE_CXL) {
+		dev_info(&dev->dev, "Switching card to CXL mode\n");
+		val &= ~CXL_VSEC_PROTOCOL_MASK;
+		val |= CXL_VSEC_PROTOCOL_256TB | CXL_VSEC_PROTOCOL_ENABLE;
+		pnv_cxl_enable_phb_kernel2_api(dev, true, switch_work->quirks);
+	} else {
+		dev_info(&dev->dev, "Switching card to PCI mode\n");
+		val &= ~CXL_VSEC_PROTOCOL_ENABLE;
+		pnv_cxl_enable_phb_kernel2_api(dev, false, switch_work->quirks);
 	}
+	if ((rc = CXL_WRITE_VSEC_MODE_CONTROL(dev, switch_work->vsec, val))) {
+		dev_err(&dev->dev, "failed to configure CXL protocol: %i", rc);
+		goto err_put_dev;
+	}
+
 	/*
 	 * The CAIA spec (v0.12 11.6 Bi-modal Device Support) states
 	 * we must wait 100ms after this mode switch before touching
@@ -641,8 +678,111 @@ static int switch_card_to_cxl(struct pci_dev *dev)
 	 */
 	msleep(100);
 
-	return 0;
+	/*
+	 * Hot reset to cause the card to come back in cxl mode. A
+	 * OPAL_RESET_PCI_LINK would be sufficient, but currently lacks support
+	 * in sapphire, so use a hot reset instead:
+	 */
+	dev_info(&dev->dev, "Hot resetting\n");
+	pci_set_pcie_reset_state(dev, pcie_hot_reset);
+	pci_set_pcie_reset_state(dev, pcie_deassert_reset);
+
+	/* Finally release the device and let Linux free up memory */
+	pci_dev_put(dev);
+	dev = NULL;
+
+	/* TODO: Clear out any state that Linux has that may have changed */
+
+	dev_info(&bus->dev, "Enumerating PCI devices\n");
+	pci_lock_rescan_remove();
+	pcibios_add_pci_devices(bus);
+	pci_unlock_rescan_remove();
+
+	kfree(switch_work);
+	return;
+
+err_put_dev:
+	pci_dev_put(dev);
+	return;
 }
+
+int cxl_check_and_switch_mode(struct pci_dev *dev, int mode, int vsec, int quirks)
+{
+	struct cxl_switch_work *work;
+	u8 val;
+	int rc;
+
+	if (!cpu_has_feature(CPU_FTR_HVMODE))
+		return -ENODEV;
+
+	if (!vsec) {
+		if (!(vsec = find_cxl_vsec(dev))) {
+			dev_info(&dev->dev, "CXL VSEC not found\n");
+			return -ENODEV;
+		}
+	}
+
+	if ((rc = CXL_READ_VSEC_MODE_CONTROL(dev, vsec, &val))) {
+		dev_err(&dev->dev, "failed to read current mode control: %i", rc);
+		return rc;
+	}
+
+	if (mode == CXL_BIMODE_PCI) {
+		if (!(val & CXL_VSEC_PROTOCOL_ENABLE)) {
+			dev_info(&dev->dev, "Card is already in PCI mode\n");
+			return 0;
+		}
+		/*
+		 * TODO: Before it's safe to switch the card back to PCI mode
+		 * we need to disable the CAPP and make sure any cachelines the
+		 * card holds have been flushed out. Needs Sapphire support.
+		 */
+		WARN(1, "CXL mode switch to PCI unsupported!\n");
+		return -EIO;
+	}
+
+	if (val & CXL_VSEC_PROTOCOL_ENABLE) {
+		dev_info(&dev->dev, "Card is already in CXL mode\n");
+
+		/* Still configure the protocol area for single mode cards */
+		if ((val & CXL_VSEC_PROTOCOL_MASK) != CXL_VSEC_PROTOCOL_256TB) {
+			val &= ~CXL_VSEC_PROTOCOL_MASK;
+			val |= CXL_VSEC_PROTOCOL_256TB;
+			if ((rc = CXL_WRITE_VSEC_MODE_CONTROL(dev, vsec, val))) {
+				dev_err(&dev->dev, "failed to set CXL protocol area: %i", rc);
+				return rc;
+			}
+		}
+
+		return 0;
+	}
+
+	dev_info(&dev->dev, "Card is in PCI mode, scheduling kernel thread to switch to CXL mode\n");
+
+	work = kmalloc(sizeof(struct cxl_switch_work), GFP_KERNEL);
+	if (!work)
+		return -ENOMEM;
+
+	pci_dev_get(dev);
+	work->dev = dev;
+	work->vsec = vsec;
+	work->mode = mode;
+	work->quirks = quirks;
+	INIT_WORK(&work->work, switch_card_to_cxl);
+
+	schedule_work(&work->work);
+
+	/*
+	 * We return a failure now to abort the driver init. Once the link has
+	 * been cycled and the card is in cxl mode we will come back (possibly
+	 * using the generic cxl driver), but return success as the card should
+	 * then be in cxl mode.
+	 * TODO: What if the card comes back in PCI mode even after the switch?
+	 *       Don't want to spin endlessly.
+	 */
+	return -EBUSY;
+}
+EXPORT_SYMBOL_GPL(cxl_check_and_switch_mode);
 
 static int pci_map_slice_regs(struct cxl_afu *afu, struct cxl *adapter, struct pci_dev *dev)
 {
@@ -1227,10 +1367,18 @@ static int cxl_configure_adapter(struct cxl *adapter, struct pci_dev *dev)
 
 	cxl_fixup_malformed_tlp(adapter, dev);
 
+	pci_set_master(dev);
+
 	if ((rc = setup_cxl_bars(dev)))
 		return rc;
 
-	if ((rc = switch_card_to_cxl(dev)))
+	/*
+	 * FIXME: We expect bi-modal devices to switch modes themselves, and
+	 * this wouldn't work anyway - split this into two that just sets up
+	 * the protocol size, but does not set the capi mode bit (and errors
+	 * out if it is not set):
+	 */
+	if ((rc = cxl_check_and_switch_mode(dev, CXL_BIMODE_CXL, 0, 0)))
 		return rc;
 
 	if ((rc = cxl_update_image_control(adapter)))
@@ -1239,25 +1387,45 @@ static int cxl_configure_adapter(struct cxl *adapter, struct pci_dev *dev)
 	if ((rc = cxl_map_adapter_regs(adapter, dev)))
 		return rc;
 
+	dev_err(&dev->dev, "Before sanitise_adapter_regs\n");
+
 	if ((rc = sanitise_adapter_regs(adapter)))
 		goto err;
+
+	dev_err(&dev->dev, "\n\n\nsanitise_adapter_regs completed!\n");
 
 	if ((rc = adapter->native->sl_ops->adapter_regs_init(adapter, dev)))
 		goto err;
 
+	dev_err(&dev->dev, "\n\n\n\ninit_implementation_adapter_regs completed\n");
+
 	if ((rc = pnv_phb_to_cxl_mode(dev, OPAL_PHB_CAPI_MODE_CAPI)))
 		goto err;
+
+	dev_err(&dev->dev, "\n\n\n\npnv_phb_to_cxl_mode CAPI completed\n");
+
+#if 0
+	dev_err(&dev->dev, "bailing\n");
+	rc = -EBUSY;
+	goto err;
+#endif
 
 	/* If recovery happened, the last step is to turn on snooping.
 	 * In the non-recovery case this has no effect */
 	if ((rc = pnv_phb_to_cxl_mode(dev, OPAL_PHB_CAPI_MODE_SNOOP_ON)))
 		goto err;
 
+	dev_err(&dev->dev, "\n\n\n\npnv_phb_to_cxl_mode SNOOP completed\n");
+
 	if ((rc = cxl_setup_psl_timebase(adapter, dev)))
 		goto err;
 
+	dev_err(&dev->dev, "\n\n\n\ncxl_setup_psl_timebase\n");
+
 	if ((rc = cxl_native_register_psl_err_irq(adapter)))
 		goto err;
+
+	dev_err(&dev->dev, "\n\n\n\ncxl_register_psl_err_irq\n");
 
 	return 0;
 
@@ -1384,6 +1552,7 @@ static int cxl_probe(struct pci_dev *dev, const struct pci_device_id *id)
 	struct cxl *adapter;
 	int slice;
 	int rc;
+	int i;
 
 	if (cxl_pci_is_vphb_device(dev)) {
 		dev_dbg(&dev->dev, "cxl_init_adapter: Ignoring cxl vphb device\n");
@@ -1408,6 +1577,21 @@ static int cxl_probe(struct pci_dev *dev, const struct pci_device_id *id)
 		rc = cxl_afu_select_best_mode(adapter->afu[slice]);
 		if (rc)
 			dev_err(&dev->dev, "AFU %i failed to start: %i\n", slice, rc);
+	}
+
+	if (pnv_pci_on_cxl_phb(dev) && adapter->slices >= 1) {
+		pnv_cxl_phb_set_peer_afu(dev, adapter->afu[0]);
+
+		/*
+		 * Reserve cxl process element IDs for all possible PFs such that PE ==
+		 * PF. For now reserve one for each possible PF (except for the XSL
+		 * which doesn't need one) to avoid any possible races during init.
+		 * These are used by the other PFs to talk to the XSL.
+		 */
+		for (i = 0; i < 8; i++) {
+			if (i != PCI_FUNC(dev->devfn))
+				cxl_reserve_pe(adapter->afu[0], i);
+		}
 	}
 
 	return 0;
@@ -1480,6 +1664,9 @@ static pci_ers_result_t cxl_pci_error_detected(struct pci_dev *pdev,
 		 */
 		for (i = 0; i < adapter->slices; i++) {
 			afu = adapter->afu[i];
+			/* Only participate in EEH if we are on a virtual PHB */
+			if (afu->phb == NULL)
+				return PCI_ERS_RESULT_NONE;
 			cxl_vphb_error_detected(afu, state);
 		}
 		return PCI_ERS_RESULT_DISCONNECT;

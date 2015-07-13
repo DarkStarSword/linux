@@ -35,9 +35,10 @@ struct cxl_context *cxl_context_alloc(void)
  * Initialises a CXL context.
  */
 int cxl_context_init(struct cxl_context *ctx, struct cxl_afu *afu, bool master,
-		     struct address_space *mapping)
+		     struct address_space *mapping, int reserved_pe)
 {
 	int i;
+	struct cxl_context *old_ctx;
 
 	spin_lock_init(&ctx->sste_lock);
 	ctx->afu = afu;
@@ -87,8 +88,17 @@ int cxl_context_init(struct cxl_context *ctx, struct cxl_afu *afu, bool master,
 	 */
 	mutex_lock(&afu->contexts_lock);
 	idr_preload(GFP_KERNEL);
-	i = idr_alloc(&ctx->afu->contexts_idr, ctx, 0,
-		      ctx->afu->num_procs, GFP_NOWAIT);
+	if (reserved_pe >= 0) {
+		old_ctx = idr_replace(&ctx->afu->contexts_idr, ctx, reserved_pe);
+		if (IS_ERR(old_ctx))
+			return (PTR_ERR(old_ctx));
+		if (old_ctx)
+			dev_WARN(&afu->dev, "Requested PE %i previously allocated!\n", reserved_pe);
+		i = reserved_pe;
+	} else {
+		i = idr_alloc(&ctx->afu->contexts_idr, ctx, 0,
+			      ctx->afu->num_procs, GFP_NOWAIT);
+	}
 	idr_preload_end();
 	mutex_unlock(&afu->contexts_lock);
 	if (i < 0)
@@ -109,6 +119,19 @@ int cxl_context_init(struct cxl_context *ctx, struct cxl_afu *afu, bool master,
 	 */
 	cxl_afu_get(afu);
 	return 0;
+}
+
+int cxl_reserve_pe(struct cxl_afu *afu, int id)
+{
+	int i;
+
+	mutex_lock(&afu->contexts_lock);
+	idr_preload(GFP_KERNEL);
+	i = idr_alloc(&afu->contexts_idr, NULL, id, id + 1, GFP_NOWAIT);
+	idr_preload_end();
+	mutex_unlock(&afu->contexts_lock);
+
+	return i;
 }
 
 static int cxl_mmap_fault(struct vm_area_struct *vma, struct vm_fault *vmf)
@@ -259,6 +282,9 @@ void cxl_context_detach_all(struct cxl_afu *afu)
 
 	mutex_lock(&afu->contexts_lock);
 	idr_for_each_entry(&afu->contexts_idr, ctx, tmp) {
+		if (!ctx) /* Reserved PE */
+			continue;
+
 		/*
 		 * Anything done in here needs to be setup before the IDR is
 		 * created and torn down after the IDR removed

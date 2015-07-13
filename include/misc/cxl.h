@@ -24,6 +24,32 @@
  * generic PCI API. This API is agnostic to the actual AFU.
  */
 
+#define CXL_BIMODE_CXL 1
+#define CXL_BIMODE_PCI 2
+
+/* Quirks that apply to certain cards in cxl mode */
+#define CXL_QUIRK_CX4 1
+
+/*
+ * Check the mode that the given Bi-Modal CXL adapter is currently in and
+ * change it if necessary. This does not apply to AFU drivers.
+ *
+ * If the mode matches the requested mode this function will return 0 - if the
+ * driver was expecting the generic CXL driver to have bound to the adapter and
+ * it gets this return value it should fail the probe function to give the CXL
+ * driver a chance to probe it.
+ *
+ * If the mode does not match it will start a background task to unplug the
+ * device from Linux and switch it's mode, and will return -EBUSY. At this
+ * point the calling driver should make sure it has released the device and
+ * fail it's probe function.
+ *
+ * The offset of the CXL vsec can be provided to this function. If 0 is passed,
+ * this function will search for a CXL VSEC with ID 0x1280 and return -ENODEV
+ * if it is not found.
+ */
+int cxl_check_and_switch_mode(struct pci_dev *dev, int mode, int vsec, int quirks);
+
 /* Get the AFU associated with a pci_dev */
 struct cxl_afu *cxl_pci_to_afu(struct pci_dev *dev);
 
@@ -104,6 +130,11 @@ int cxl_map_afu_irq(struct cxl_context *cxl, int num,
 		    irq_handler_t handler, void *cookie, char *name);
 /* unmap mapped IRQ handlers */
 void cxl_unmap_afu_irq(struct cxl_context *cxl, int num, void *cookie);
+
+/*
+ * Look up a hardware IRQ from an AFU irq number
+ */
+irq_hw_number_t cxl_afu_irq_to_hwirq(struct cxl_context *ctx, int num);
 
 /*
  * Start work on the AFU. This starts an cxl context and associates it with a
@@ -211,5 +242,25 @@ void cxl_perst_reloads_same_image(struct cxl_afu *afu,
  * Read the VPD for the card where the AFU resides
  */
 ssize_t cxl_read_adapter_vpd(struct pci_dev *dev, void *buf, size_t count);
+
+
+/*
+ * CXL Kernel2 API
+ *
+ * The Kernel2 API behaves largely the same as the original cxl kernel API, but
+ * instead of exposing AFUs on a virtual PHB that other drivers can bind to, a
+ * real PHB is used with at least one cxl function, and possibly additional
+ * non-cxl functions. This is intended for certain bi-modal devices that wish
+ * to add cxl support to an existing device & driver.
+ */
+
+/*
+ * Initialise a default context associated with the PCI device, optionally
+ * using a PE Id that has previously been reserved with cxl_reserve_pe (pass -1
+ * to allocate dynamically). This is expected to be called from the PHB to
+ * create default contexts for each PF (other than the cxl PF) that may be
+ * later retrieved with cxl_get_context.
+ */
+bool cxl_pci_associate_default_context(struct pci_dev *dev, struct cxl_afu *afu, int reserved_pe);
 
 #endif /* _MISC_CXL_H */

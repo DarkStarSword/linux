@@ -3192,6 +3192,9 @@ static bool pnv_pci_enable_device_hook(struct pci_dev *dev)
 	if (!pdn || pdn->pe_number == IODA_INVALID_PE)
 		return false;
 
+	if ((phb->flags & PNV_PHB_FLAG_CXL) && !pnv_cxl_enable_device_hook(dev, phb))
+		return false;
+
 	return true;
 }
 
@@ -3209,7 +3212,7 @@ static void pnv_pci_ioda_shutdown(struct pci_controller *hose)
 		       OPAL_ASSERT_RESET);
 }
 
-static const struct pci_controller_ops pnv_pci_ioda_controller_ops = {
+const struct pci_controller_ops pnv_pci_ioda_controller_ops = {
        .dma_dev_setup = pnv_pci_dma_dev_setup,
        .dma_bus_setup = pnv_pci_dma_bus_setup,
 #ifdef CONFIG_PCI_MSI
@@ -3235,6 +3238,21 @@ static const struct pci_controller_ops pnv_npu_ioda_controller_ops = {
 	.reset_secondary_bus = pnv_pci_reset_secondary_bus,
 	.dma_set_mask = pnv_npu_dma_set_mask,
 	.shutdown = pnv_pci_ioda_shutdown,
+};
+
+const struct pci_controller_ops pnv_cxl_cx4_ioda_controller_ops = {
+       .dma_dev_setup = pnv_pci_dma_dev_setup,
+       .dma_bus_setup = pnv_pci_dma_bus_setup,
+#ifdef CONFIG_PCI_MSI
+       .setup_msi_irqs = pnv_cxl_cx4_setup_msi_irqs,
+       .teardown_msi_irqs = pnv_cxl_cx4_teardown_msi_irqs,
+#endif
+       .enable_device_hook = pnv_pci_enable_device_hook,
+       .window_alignment = pnv_pci_window_alignment,
+       .reset_secondary_bus = pnv_pci_reset_secondary_bus,
+       .dma_set_mask = pnv_pci_ioda_dma_set_mask,
+       .dma_get_required_mask = pnv_pci_ioda_dma_get_required_mask,
+       .shutdown = pnv_pci_ioda_shutdown,
 };
 
 static void __init pnv_pci_init_ioda_phb(struct device_node *np,
@@ -3385,6 +3403,8 @@ static void __init pnv_pci_init_ioda_phb(struct device_node *np,
 
 	/* Setup MSI support */
 	pnv_pci_init_ioda_msis(phb);
+
+	phb->cxl_afu = NULL;
 
 	/*
 	 * We pass the PCI probe flag PCI_REASSIGN_ALL_RSRC here
