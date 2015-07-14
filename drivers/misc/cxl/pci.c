@@ -574,7 +574,7 @@ int cxl_check_and_switch_mode(struct pci_dev *dev, int mode, int vsec)
 
 	if (!vsec) {
 		if (!(vsec = find_cxl_vsec(dev))) {
-			dev_err(&dev->dev, "ABORTING: CXL VSEC not found!\n");
+			dev_info(&dev->dev, "CXL VSEC not found\n");
 			return -ENODEV;
 		}
 	}
