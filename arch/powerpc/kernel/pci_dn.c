@@ -67,76 +67,8 @@ static struct pci_dn *pci_bus_to_pdn(struct pci_bus *bus)
 	return pdn;
 }
 
-struct pci_dn *pci_get_pdn_by_devfn(struct pci_bus *bus,
-				    int devfn)
-{
-	struct device_node *dn = NULL;
-	struct pci_dn *parent, *pdn;
-	struct pci_dev *pdev = NULL;
-
-	/* Fast path: fetch from PCI device */
-	list_for_each_entry(pdev, &bus->devices, bus_list) {
-		if (pdev->devfn == devfn) {
-			if (pdev->dev.archdata.pci_data)
-				return pdev->dev.archdata.pci_data;
-
-			dn = pci_device_to_OF_node(pdev);
-			break;
-		}
-	}
-
-	/* Fast path: fetch from device node */
-	pdn = dn ? PCI_DN(dn) : NULL;
-	if (pdn)
-		return pdn;
-
-	/* Slow path: fetch from firmware data hierarchy */
-	parent = pci_bus_to_pdn(bus);
-	if (!parent)
-		return NULL;
-
-	list_for_each_entry(pdn, &parent->child_list, list) {
-		if (pdn->busno == bus->number &&
-                    pdn->devfn == devfn)
-                        return pdn;
-        }
-
-	return NULL;
-}
-
-struct pci_dn *pci_get_pdn(struct pci_dev *pdev)
-{
-	struct device_node *dn;
-	struct pci_dn *parent, *pdn;
-
-	/* Search device directly */
-	if (pdev->dev.archdata.pci_data)
-		return pdev->dev.archdata.pci_data;
-
-	/* Check device node */
-	dn = pci_device_to_OF_node(pdev);
-	pdn = dn ? PCI_DN(dn) : NULL;
-	if (pdn)
-		return pdn;
-
-	/*
-	 * VFs don't have device nodes. We hook their
-	 * firmware data to PF's bridge.
-	 */
-	parent = pci_bus_to_pdn(pdev->bus);
-	if (!parent)
-		return NULL;
-
-	list_for_each_entry(pdn, &parent->child_list, list) {
-		if (pdn->busno == pdev->bus->number &&
-		    pdn->devfn == pdev->devfn)
-			return pdn;
-	}
-
-	return NULL;
-}
-
-#ifdef CONFIG_PCI_IOV
+// #ifdef CONFIG_PCI_IOV
+#if 1
 static struct pci_dn *add_one_dev_pci_data(struct pci_dn *parent,
 					   struct pci_dev *pdev,
 					   int vf_index,
@@ -176,6 +108,92 @@ static struct pci_dn *add_one_dev_pci_data(struct pci_dn *parent,
 	return pdn;
 }
 #endif
+
+
+int cxl_rescanning = 0;
+EXPORT_SYMBOL(cxl_rescanning);
+
+struct pci_dn *pci_get_pdn_by_devfn(struct pci_bus *bus,
+				    int devfn)
+{
+	struct device_node *dn = NULL;
+	struct pci_dn *parent, *pdn;
+	struct pci_dev *pdev = NULL;
+
+	/* Fast path: fetch from PCI device */
+	list_for_each_entry(pdev, &bus->devices, bus_list) {
+		if (pdev->devfn == devfn) {
+			if (pdev->dev.archdata.pci_data)
+				return pdev->dev.archdata.pci_data;
+
+			dn = pci_device_to_OF_node(pdev);
+			break;
+		}
+	}
+
+	/* Fast path: fetch from device node */
+	pdn = dn ? PCI_DN(dn) : NULL;
+	if (pdn)
+		return pdn;
+
+	/* Slow path: fetch from firmware data hierarchy */
+	parent = pci_bus_to_pdn(bus);
+	if (!parent)
+		return NULL;
+
+	list_for_each_entry(pdn, &parent->child_list, list) {
+		if (pdn->busno == bus->number &&
+                    pdn->devfn == devfn)
+                        return pdn;
+        }
+
+	dev_warn(&bus->dev, "pci_get_pdn_by_devfn NO MATCH :(\n");
+
+	/*
+	 * No match, create new structure. For CAPI bi-modal cards which may
+	 * gain additional PFs at runtime when switching to CAPI mode:
+	 */
+	pdn = add_one_dev_pci_data(parent, NULL, 0, bus->number, devfn);
+	if (!pdn) {
+		dev_warn(&pdev->dev, "%s: Cannot create firmware data for PF %d\n",
+			 __func__, devfn);
+		return NULL;
+	}
+
+	return pdn;
+}
+
+struct pci_dn *pci_get_pdn(struct pci_dev *pdev)
+{
+	struct device_node *dn;
+	struct pci_dn *parent, *pdn;
+
+	/* Search device directly */
+	if (pdev->dev.archdata.pci_data)
+		return pdev->dev.archdata.pci_data;
+
+	/* Check device node */
+	dn = pci_device_to_OF_node(pdev);
+	pdn = dn ? PCI_DN(dn) : NULL;
+	if (pdn)
+		return pdn;
+
+	/*
+	 * VFs don't have device nodes. We hook their
+	 * firmware data to PF's bridge.
+	 */
+	parent = pci_bus_to_pdn(pdev->bus);
+	if (!parent)
+		return NULL;
+
+	list_for_each_entry(pdn, &parent->child_list, list) {
+		if (pdn->busno == pdev->bus->number &&
+		    pdn->devfn == pdev->devfn)
+			return pdn;
+	}
+
+	return NULL;
+}
 
 struct pci_dn *add_dev_pci_data(struct pci_dev *pdev)
 {
