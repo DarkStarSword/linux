@@ -7,6 +7,8 @@
  * 2 of the License, or (at your option) any later version.
  */
 
+#define DEBUG
+
 #include <linux/pci_regs.h>
 #include <linux/pci_ids.h>
 #include <linux/device.h>
@@ -136,10 +138,14 @@ u8 cxl_afu_cr_read8(struct cxl_afu *afu, int cr, u64 off)
 }
 
 static const struct pci_device_id cxl_pci_tbl[] = {
+#if 1
 	{ PCI_DEVICE(PCI_VENDOR_ID_IBM, 0x0477), },
 	{ PCI_DEVICE(PCI_VENDOR_ID_IBM, 0x044b), },
 	{ PCI_DEVICE(PCI_VENDOR_ID_IBM, 0x04cf), },
+#endif
+#if 1
 	{ PCI_DEVICE_CLASS(0x120000, ~0), },
+#endif
 
 	{ }
 };
@@ -283,6 +289,39 @@ static void dump_cxl_config_space(struct pci_dev *dev)
 	show_reg("Flash Status/Control Register", val);
 	pci_read_config_dword(dev, vsec + 0x58, &val);
 	show_reg("Flash Data Port", val);
+
+#undef show_reg
+}
+
+static void __maybe_unused dump_cxl_regs(struct cxl *adapter)
+{
+#define show_reg(name) \
+	dev_info(&adapter->dev, "%30s: %#llx\n", #name, cxl_p1_read(adapter, name))
+
+	 //                               // READ WRITE
+	 // show_reg(CXL_PSL_CtxTime);    // DEAD ????
+	 // show_reg(CXL_PSL_ErrIVTE);    // DEAD OK
+	 // show_reg(CXL_PSL_KEY1);       // ???? ????
+	 // show_reg(CXL_PSL_KEY2);       // ???? ????
+	 // show_reg(CXL_PSL_Control);    // ???? ????
+	 // show_reg(CXL_PSL_DLCNTL);     // ???? ????
+	 // show_reg(CXL_PSL_DLADDR);     // ???? ????
+	 // show_reg(CXL_PSL_LBISEL);     // ???? ????
+	 // show_reg(CXL_PSL_SLBIE);      // ???? ????
+	 // show_reg(CXL_PSL_SLBIA);      // ???? ????
+	 // show_reg(CXL_PSL_TLBIE);      // ???? ????
+	 // show_reg(CXL_PSL_TLBIA);      // ???? ????
+	 // show_reg(CXL_PSL_AFUSEL);     // ???? DEAD
+	 // show_reg(CXL_PSL_FIR1);       // ???? ????
+	 // show_reg(CXL_PSL_FIR2);       // ???? ????
+	 // show_reg(CXL_PSL_Timebase);   // ???? ????
+	 // show_reg(CXL_PSL_VERSION);    // ???? ????
+	 // show_reg(CXL_PSL_RESLCKTO);   // ???? ????
+	 // show_reg(CXL_PSL_TB_CTLSTAT); // ???? ????
+	 // show_reg(CXL_PSL_FIR_CNTL);   // ???? ????
+	 // show_reg(CXL_PSL_DSNDCTL);    // ???? ????
+	 // show_reg(CXL_PSL_SNWRALLOC);  // ???? ????
+	 // show_reg(CXL_PSL_TRACE);      // ???? ????
 
 #undef show_reg
 }
@@ -1307,25 +1346,39 @@ static int cxl_configure_adapter(struct cxl *adapter, struct pci_dev *dev)
 	if ((rc = cxl_map_adapter_regs(adapter, dev)))
 		return rc;
 
+	dev_err(&dev->dev, "Before sanitise_adapter_regs\n");
+
 	if ((rc = sanitise_adapter_regs(adapter)))
 		goto err;
+
+	dev_err(&dev->dev, "\n\n\nsanitise_adapter_regs completed!\n");
 
 	if ((rc = init_implementation_adapter_regs(adapter, dev)))
 		goto err;
 
+	dev_err(&dev->dev, "\n\n\n\ninit_implementation_adapter_regs completed\n");
+
 	if ((rc = pnv_phb_to_cxl_mode(dev, OPAL_PHB_CAPI_MODE_CAPI)))
 		goto err;
+
+	dev_err(&dev->dev, "\n\n\n\npnv_phb_to_cxl_mode CAPI completed\n");
 
 	/* If recovery happened, the last step is to turn on snooping.
 	 * In the non-recovery case this has no effect */
 	if ((rc = pnv_phb_to_cxl_mode(dev, OPAL_PHB_CAPI_MODE_SNOOP_ON)))
 		goto err;
 
+	dev_err(&dev->dev, "\n\n\n\npnv_phb_to_cxl_mode SNOOP completed\n");
+
 	if ((rc = cxl_setup_psl_timebase(adapter, dev)))
 		goto err;
 
+	dev_err(&dev->dev, "\n\n\n\ncxl_setup_psl_timebase\n");
+
 	if ((rc = cxl_register_psl_err_irq(adapter)))
 		goto err;
+
+	dev_err(&dev->dev, "\n\n\n\ncxl_register_psl_err_irq\n");
 
 	return 0;
 

@@ -1137,12 +1137,14 @@ static void remove_one(struct pci_dev *pdev)
 }
 
 static const struct pci_device_id mlx5_core_pci_table[] = {
+#if 0
 	{ PCI_VDEVICE(MELLANOX, 0x1011) }, /* Connect-IB */
 	{ PCI_VDEVICE(MELLANOX, 0x1012) }, /* Connect-IB VF */
 	{ PCI_VDEVICE(MELLANOX, 0x1013) }, /* ConnectX-4 */
 	{ PCI_VDEVICE(MELLANOX, 0x1014) }, /* ConnectX-4 VF */
 	{ PCI_VDEVICE(MELLANOX, 0x1015) }, /* ConnectX-4LX */
 	{ PCI_VDEVICE(MELLANOX, 0x1016) }, /* ConnectX-4LX VF */
+#endif
 	{ 0, }
 };
 

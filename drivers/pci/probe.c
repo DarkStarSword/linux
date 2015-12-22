@@ -1573,6 +1573,9 @@ static struct pci_dev *pci_scan_device(struct pci_bus *bus, int devfn)
 	struct pci_dev *dev;
 	u32 l;
 
+// XXX: THIS IS WHERE WE WERE ORIGINALLY FAILING WHILE SCANNING AN ADDITIONAL
+// PF THAT APPEARED AFTER SWITCHING A CARD TO CAPI MODE AS THIS CALL DEPENDS ON
+// THE DEVICE BEING ASSOCIATED WITH A DEVICE TREE NODE:
 	if (!pci_bus_read_dev_vendor_id(bus, devfn, &l, 60*1000))
 		return NULL;
 
@@ -1710,8 +1713,11 @@ static unsigned next_fn(struct pci_bus *bus, struct pci_dev *dev, unsigned fn)
 	unsigned next_fn;
 
 	if (pci_ari_enabled(bus)) {
-		if (!dev)
+		if (!dev) {
+			// THIS FAILS FOR ADDITIONAL PFs THAT WERE NOT PRESENT
+			// ON BOOT
 			return 0;
+		}
 		pos = pci_find_ext_capability(dev, PCI_EXT_CAP_ID_ARI);
 		if (!pos)
 			return 0;

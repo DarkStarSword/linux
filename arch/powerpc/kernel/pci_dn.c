@@ -67,6 +67,50 @@ static struct pci_dn *pci_bus_to_pdn(struct pci_bus *bus)
 	return pdn;
 }
 
+// #ifdef CONFIG_PCI_IOV
+#if 1
+static struct pci_dn *add_one_dev_pci_data(struct pci_dn *parent,
+					   struct pci_dev *pdev,
+					   int busno, int devfn)
+{
+	struct pci_dn *pdn;
+
+	/* Except PHB, we always have the parent */
+	if (!parent)
+		return NULL;
+
+	pdn = kzalloc(sizeof(*pdn), GFP_KERNEL);
+	if (!pdn) {
+		// dev_warn(&pdev->dev, "%s: Out of memory!\n", __func__);
+		return NULL;
+	}
+
+	pdn->phb = parent->phb;
+	pdn->parent = parent;
+	pdn->busno = busno;
+	pdn->devfn = devfn;
+#ifdef CONFIG_PPC_POWERNV
+	pdn->pe_number = IODA_INVALID_PE;
+#endif
+	INIT_LIST_HEAD(&pdn->child_list);
+	INIT_LIST_HEAD(&pdn->list);
+	list_add_tail(&pdn->list, &parent->child_list);
+
+	/*
+	 * If we already have PCI device instance, lets
+	 * bind them.
+	 */
+	if (pdev)
+		pdev->dev.archdata.pci_data = pdn;
+
+	return pdn;
+}
+#endif
+
+
+int cxl_rescanning = 0;
+EXPORT_SYMBOL(cxl_rescanning);
+
 struct pci_dn *pci_get_pdn_by_devfn(struct pci_bus *bus,
 				    int devfn)
 {
@@ -101,7 +145,20 @@ struct pci_dn *pci_get_pdn_by_devfn(struct pci_bus *bus,
                         return pdn;
         }
 
-	return NULL;
+	dev_warn(&bus->dev, "pci_get_pdn_by_devfn NO MATCH :(\n");
+
+	/*
+	 * No match, create new structure. For CAPI bi-modal cards which may
+	 * gain additional PFs at runtime when switching to CAPI mode:
+	 */
+	pdn = add_one_dev_pci_data(parent, NULL, bus->number, devfn);
+	if (!pdn) {
+		dev_warn(&pdev->dev, "%s: Cannot create firmware data for PF %d\n",
+			 __func__, devfn);
+		return NULL;
+	}
+
+	return pdn;
 }
 
 struct pci_dn *pci_get_pdn(struct pci_dev *pdev)
@@ -135,45 +192,6 @@ struct pci_dn *pci_get_pdn(struct pci_dev *pdev)
 
 	return NULL;
 }
-
-#ifdef CONFIG_PCI_IOV
-static struct pci_dn *add_one_dev_pci_data(struct pci_dn *parent,
-					   struct pci_dev *pdev,
-					   int busno, int devfn)
-{
-	struct pci_dn *pdn;
-
-	/* Except PHB, we always have the parent */
-	if (!parent)
-		return NULL;
-
-	pdn = kzalloc(sizeof(*pdn), GFP_KERNEL);
-	if (!pdn) {
-		dev_warn(&pdev->dev, "%s: Out of memory!\n", __func__);
-		return NULL;
-	}
-
-	pdn->phb = parent->phb;
-	pdn->parent = parent;
-	pdn->busno = busno;
-	pdn->devfn = devfn;
-#ifdef CONFIG_PPC_POWERNV
-	pdn->pe_number = IODA_INVALID_PE;
-#endif
-	INIT_LIST_HEAD(&pdn->child_list);
-	INIT_LIST_HEAD(&pdn->list);
-	list_add_tail(&pdn->list, &parent->child_list);
-
-	/*
-	 * If we already have PCI device instance, lets
-	 * bind them.
-	 */
-	if (pdev)
-		pdev->dev.archdata.pci_data = pdn;
-
-	return pdn;
-}
-#endif
 
 struct pci_dn *add_dev_pci_data(struct pci_dev *pdev)
 {

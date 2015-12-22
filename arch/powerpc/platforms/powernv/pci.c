@@ -525,6 +525,7 @@ static int pnv_pci_read_config(struct pci_bus *bus,
 	int ret;
 
 	*val = 0xFFFFFFFF;
+// THIS FAILS FOR CARDS WITH ADDITIONAL PFs AFTER SWITCHING TO CAPI MODE:
 	pdn = pci_get_pdn_by_devfn(bus, devfn);
 	if (!pdn)
 		return PCIBIOS_DEVICE_NOT_FOUND;

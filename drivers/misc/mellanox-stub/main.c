@@ -8,8 +8,10 @@
 #define CXL_PCI_VSEC_ID	0x1280
 
 static DEFINE_PCI_DEVICE_TABLE(mellanox_stub_pci_tbl) = {
+#if 1
 	{ PCI_DEVICE(PCI_VENDOR_ID_MELLANOX, 0x1013), }, /* CXL enabled cards will also have a cxl VSEC */
 	/* { PCI_DEVICE(0x0477, 0x1017), },  Card in CXL mode (should bind to cxl.ko from class code) */
+#endif
 	{ } /* List terminator */
 };
 MODULE_DEVICE_TABLE(pci, mellanox_stub_pci_tbl);

@@ -1116,6 +1116,10 @@ EXPORT_SYMBOL_GPL(eeh_add_device_tree_early);
  */
 void eeh_add_device_late(struct pci_dev *dev)
 {
+
+	// AFTER MANUFACTURING A PCI OF DEVICE NODE STRUCTURE FOR ADDITIONAL
+	// PFs, WE CRASH HERE SINCE THE STRUCT eeh_dev IS NOT FILLED OUT YET
+
 	struct pci_dn *pdn;
 	struct eeh_dev *edev;
 
@@ -1126,6 +1130,10 @@ void eeh_add_device_late(struct pci_dev *dev)
 
 	pdn = pci_get_pdn_by_devfn(dev->bus, dev->devfn);
 	edev = pdn_to_eeh_dev(pdn);
+	if (!edev) {
+		dev_warn(&dev->dev, "EEH FIXME: Skipping device %s without eeh_dev!\n", pci_name(dev));
+		return;
+	}
 	if (edev->pdev == dev) {
 		pr_debug("EEH: Already referenced !\n");
 		return;
