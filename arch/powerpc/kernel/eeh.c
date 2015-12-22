@@ -1123,6 +1123,10 @@ void eeh_add_device_late(struct pci_dev *dev)
 
 	pdn = pci_get_pdn_by_devfn(dev->bus, dev->devfn);
 	edev = pdn_to_eeh_dev(pdn);
+	if (!edev) {
+		dev_warn(&dev->dev, "EEH FIXME: Skipping device %s without eeh_dev!\n", pci_name(dev));
+		return;
+	}
 	if (edev->pdev == dev) {
 		pr_debug("EEH: Already referenced !\n");
 		return;
