@@ -1334,6 +1334,8 @@ static int cxl_configure_adapter(struct cxl *adapter, struct pci_dev *dev)
 
 	cxl_fixup_malformed_tlp(adapter, dev);
 
+	pci_set_master(dev);
+
 	if ((rc = setup_cxl_bars(dev)))
 		return rc;
 
@@ -1362,6 +1364,10 @@ static int cxl_configure_adapter(struct cxl *adapter, struct pci_dev *dev)
 		goto err;
 
 	dev_err(&dev->dev, "\n\n\n\npnv_phb_to_cxl_mode CAPI completed\n");
+
+	dev_err(&dev->dev, "bailing\n");
+	rc = -EBUSY;
+	goto err;
 
 	/* If recovery happened, the last step is to turn on snooping.
 	 * In the non-recovery case this has no effect */
