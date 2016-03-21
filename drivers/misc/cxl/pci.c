@@ -464,22 +464,24 @@ static u64 timebase_read_xsl(struct cxl *adapter)
 	return cxl_p1_read(adapter, CXL_XSL_Timebase);
 }
 
-static int cxl_setup_psl_timebase(struct cxl *adapter, struct pci_dev *dev)
+static void cxl_setup_psl_timebase(struct cxl *adapter, struct pci_dev *dev)
 {
 	u64 psl_tb;
 	int delta;
 	unsigned int retry = 0;
 	struct device_node *np;
 
+	adapter->psl_timebase_synced = false;
+
 	if (!(np = pnv_pci_get_phb_node(dev)))
-		return -ENODEV;
+		return;
 
 	/* Do not fail when CAPP timebase sync is not supported by OPAL */
 	of_node_get(np);
 	if (! of_get_property(np, "ibm,capp-timebase-sync", NULL)) {
 		of_node_put(np);
-		pr_err("PSL: Timebase sync: OPAL support missing\n");
-		return 0;
+		dev_info(&dev->dev, "PSL timebase inactive: OPAL support missing\n");
+		return;
 	}
 	of_node_put(np);
 
@@ -497,8 +499,8 @@ static int cxl_setup_psl_timebase(struct cxl *adapter, struct pci_dev *dev)
 	do {
 		msleep(1);
 		if (retry++ > 5) {
-			pr_err("PSL: Timebase sync: giving up!\n");
-			return -EIO;
+			dev_info(&dev->dev, "PSL timebase can't synchronize\n");
+			return;
 		}
 		psl_tb = adapter->native->sl_ops->timebase_read(adapter);
 		delta = mftb() - psl_tb;
@@ -506,7 +508,8 @@ static int cxl_setup_psl_timebase(struct cxl *adapter, struct pci_dev *dev)
 			delta = -delta;
 	} while (cputime_to_usecs(delta) > 16);
 
-	return 0;
+	adapter->psl_timebase_synced = true;
+	return;
 }
 
 static int init_implementation_afu_psl_regs(struct cxl_afu *afu)
@@ -1411,8 +1414,8 @@ static int cxl_configure_adapter(struct cxl *adapter, struct pci_dev *dev)
 	if ((rc = pnv_phb_to_cxl_mode(dev, OPAL_PHB_CAPI_MODE_SNOOP_ON)))
 		goto err;
 
-	if ((rc = cxl_setup_psl_timebase(adapter, dev)))
-		goto err;
+	/* Ignore error, adapter init is not dependant on timebase sync */
+	cxl_setup_psl_timebase(adapter, dev);
 
 	if ((rc = cxl_native_register_psl_err_irq(adapter)))
 		goto err;
