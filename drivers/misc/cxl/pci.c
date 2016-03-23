@@ -329,7 +329,7 @@ static int init_implementation_adapter_regs(struct cxl *adapter, struct pci_dev 
 {
 	struct device_node *np;
 	const __be32 *prop;
-	u64 psl_dsnctl;
+	u64 dsnctl;
 	u64 chipid;
 	u64 phb_index;
 
@@ -341,9 +341,9 @@ static int init_implementation_adapter_regs(struct cxl *adapter, struct pci_dev 
 	if (!np)
 		return -ENODEV;
 	chipid = be32_to_cpup(prop);
+	dsnctl = chipid << (63-5);
 
 	/* Tell PSL where to route data to */
-	psl_dsnctl = 0x02E8900002000000ULL | (chipid << (63-5));
 	if (CPU_IS_NAPLES()) {
 		prop = of_get_property(np, "ibm,phb-index", NULL);
 		if (!prop) {
@@ -351,18 +351,17 @@ static int init_implementation_adapter_regs(struct cxl *adapter, struct pci_dev 
 			return -ENODEV;
 		}
 		phb_index = be32_to_cpup(prop);
-		psl_dsnctl |= (phb_index << (63-11));
+		dsnctl |= (phb_index << (63-11));
 	}
 	of_node_put(np);
 
-	cxl_p1_write(adapter, CXL_PSL_DSNDCTL, psl_dsnctl);
-	cxl_p1_write(adapter, CXL_PSL_RESLCKTO, 0x20000000200ULL);
-	/* snoop write mask */
-	cxl_p1_write(adapter, CXL_PSL_SNWRALLOC, 0x00000000FFFFFFFFULL);
-	/* set fir_accum */
-	cxl_p1_write(adapter, CXL_PSL_FIR_CNTL, 0x0800000000000000ULL);
-	/* for debugging with trace arrays */
-	cxl_p1_write(adapter, CXL_PSL_TRACE, 0x0000FF7C00000000ULL);
+#if 0 // FIXME: Add an ops structure for PSL / XSL
+	dsnctl |= 0x02E8900002000000ULL;
+	cxl_p1_write(adapter, CXL_PSL_DSNDCTL, dsnctl);
+#else
+	dsnctl |= 0x02E8000000000000ULL;
+	cxl_p1_write(adapter, CXL_XSL_DSNCTL, dsnctl);
+#endif
 
 	return 0;
 }
@@ -376,6 +375,9 @@ static int cxl_setup_psl_timebase(struct cxl *adapter, struct pci_dev *dev)
 	int delta;
 	unsigned int retry = 0;
 	struct device_node *np;
+
+// FIXME: XSL timebase registers
+return 0;
 
 	if (!(np = pnv_pci_get_phb_node(dev)))
 		return -ENODEV;
@@ -418,6 +420,7 @@ static int cxl_setup_psl_timebase(struct cxl *adapter, struct pci_dev *dev)
 
 static int init_implementation_afu_regs(struct cxl_afu *afu)
 {
+#if 0
 	/* read/write masks for this slice */
 	cxl_p1n_write(afu, CXL_PSL_APCALLOC_A, 0xFFFFFFFEFEFEFEFEULL);
 	/* APC read/write masks for this slice */
@@ -425,6 +428,7 @@ static int init_implementation_afu_regs(struct cxl_afu *afu)
 	/* for debugging with trace arrays */
 	cxl_p1n_write(afu, CXL_PSL_SLICE_TRACE, 0x0000FFFF00000000ULL);
 	cxl_p1n_write(afu, CXL_PSL_RXCTL_A, CXL_PSL_RXCTL_AFUHP_4S);
+#endif
 
 	return 0;
 }
@@ -1283,8 +1287,20 @@ static int cxl_configure_adapter(struct cxl *adapter, struct pci_dev *dev)
 	if ((rc = init_implementation_adapter_regs(adapter, dev)))
 		goto err;
 
+#if 0
+	pr_crit("implementation regs initted, bailing\n");
+	rc = -EBUSY;
+	goto err;
+#endif
+
+	pr_crit("about to switch phb to cxl mode\n");
+
 	if ((rc = pnv_phb_to_cxl_mode(dev, OPAL_PHB_CAPI_MODE_CAPI)))
 		goto err;
+
+	pr_crit("phb switched to cxl mode, bailing\n");
+	rc = -EBUSY;
+	goto err;
 
 	/* If recovery happened, the last step is to turn on snooping.
 	 * In the non-recovery case this has no effect */

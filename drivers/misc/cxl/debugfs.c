@@ -19,6 +19,9 @@ void cxl_stop_trace(struct cxl *adapter)
 {
 	int slice;
 
+// FIXME: Not on XSL
+return;
+
 	/* Stop the trace */
 	cxl_p1_write(adapter, CXL_PSL_TRACE, 0x8000000000000017LL);
 
@@ -65,12 +68,14 @@ int cxl_debugfs_adapter_add(struct cxl *adapter)
 		return PTR_ERR(dir);
 	adapter->debugfs = dir;
 
+#if 0
 	debugfs_create_io_x64("fir1",     S_IRUSR, dir, _cxl_p1_addr(adapter, CXL_PSL_FIR1));
 	debugfs_create_io_x64("fir2",     S_IRUSR, dir, _cxl_p1_addr(adapter, CXL_PSL_FIR2));
 	debugfs_create_io_x64("fir_cntl", S_IRUSR, dir, _cxl_p1_addr(adapter, CXL_PSL_FIR_CNTL));
 	debugfs_create_io_x64("err_ivte", S_IRUSR, dir, _cxl_p1_addr(adapter, CXL_PSL_ErrIVTE));
 
 	debugfs_create_io_x64("trace", S_IRUSR | S_IWUSR, dir, _cxl_p1_addr(adapter, CXL_PSL_TRACE));
+#endif
 
 	return 0;
 }
@@ -105,7 +110,7 @@ int cxl_debugfs_afu_add(struct cxl_afu *afu)
 	debugfs_create_io_x64("sstp1",      S_IRUSR, dir, _cxl_p2n_addr(afu, CXL_SSTP1_An));
 	debugfs_create_io_x64("err_status", S_IRUSR, dir, _cxl_p2n_addr(afu, CXL_PSL_ErrStat_An));
 
-	debugfs_create_io_x64("trace", S_IRUSR | S_IWUSR, dir, _cxl_p1n_addr(afu, CXL_PSL_SLICE_TRACE));
+	// debugfs_create_io_x64("trace", S_IRUSR | S_IWUSR, dir, _cxl_p1n_addr(afu, CXL_PSL_SLICE_TRACE));
 
 	return 0;
 }
