@@ -1360,6 +1360,8 @@ static int cxl_configure_adapter(struct cxl *adapter, struct pci_dev *dev)
 
 	dev_err(&dev->dev, "\n\n\n\ninit_implementation_adapter_regs completed\n");
 
+	dev_err(&dev->dev, "bailing\n");
+
 	if ((rc = pnv_phb_to_cxl_mode(dev, OPAL_PHB_CAPI_MODE_CAPI)))
 		goto err;
 
