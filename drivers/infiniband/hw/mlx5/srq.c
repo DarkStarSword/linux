@@ -258,9 +258,25 @@ static void destroy_srq_kernel(struct mlx5_ib_dev *dev, struct mlx5_ib_srq *srq)
 	mlx5_db_free(dev->mdev, &srq->db);
 }
 
+#ifdef CONFIG_MLX5_CAPI
+struct ib_srq *
+mlx5_ib_create_srq_wrapper(struct ib_pd *pd,
+			   struct ib_srq_init_attr *init_attr,
+			   struct ib_udata *udata)
+{
+	return mlx5_ib_create_srq(pd, init_attr, udata,
+				  mlx5_capi_get_pe_id(pd->uobject->context));
+}
+
+struct ib_srq *mlx5_ib_create_srq(struct ib_pd *pd,
+				  struct ib_srq_init_attr *init_attr,
+				  struct ib_udata *udata,
+				  int pe_id)
+#else
 struct ib_srq *mlx5_ib_create_srq(struct ib_pd *pd,
 				  struct ib_srq_init_attr *init_attr,
 				  struct ib_udata *udata)
+#endif
 {
 	struct mlx5_ib_dev *dev = to_mdev(pd->device);
 	struct mlx5_ib_srq *srq;
@@ -329,6 +345,9 @@ struct ib_srq *mlx5_ib_create_srq(struct ib_pd *pd,
 
 	in->ctx.pd = cpu_to_be32(to_mpd(pd)->pdn);
 	in->ctx.db_record = cpu_to_be64(srq->db.dma);
+#ifdef CONFIG_MLX5_CAPI
+	in->ctx.pe_id = cpu_to_be16(pe_id);
+#endif
 	err = mlx5_core_create_srq(dev->mdev, &srq->msrq, in, inlen, is_xrc);
 	kvfree(in);
 	if (err) {

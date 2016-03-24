@@ -2197,7 +2197,9 @@ static int mlx5e_create_mkey(struct mlx5e_priv *priv, u32 pdn,
 			MLX5_ACCESS_MODE_PA;
 	in->seg.flags_pd = cpu_to_be32(pdn | MLX5_MKEY_LEN64);
 	in->seg.qpn_mkey7_0 = cpu_to_be32(0xffffff << 8);
-
+#ifdef CONFIG_MLX5_CAPI
+	in->seg.pe_id = cpu_to_be16(priv->mdev->priv.capi.default_pe);
+#endif
 	err = mlx5_core_create_mkey(mdev, mr, in, sizeof(*in), NULL, NULL,
 				    NULL);
 

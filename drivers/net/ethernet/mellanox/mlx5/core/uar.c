@@ -45,7 +45,14 @@ enum {
 
 struct mlx5_alloc_uar_mbox_in {
 	struct mlx5_inbox_hdr	hdr;
-	u8			rsvd[8];
+#ifdef CONFIG_MLX5_CAPI
+	u8                      rsvd1;
+	__be16                  pe_id;
+	u8                      rsvd2;
+	u8                      rsvd3[4];
+#else
+	u8                      rsvd[8];
+#endif
 };
 
 struct mlx5_alloc_uar_mbox_out {
@@ -65,7 +72,11 @@ struct mlx5_free_uar_mbox_out {
 	u8			rsvd[8];
 };
 
+#ifdef CONFIG_MLX5_CAPI
+int mlx5_cmd_alloc_uar(struct mlx5_core_dev *dev, u32 *uarn, int pe_id)
+#else
 int mlx5_cmd_alloc_uar(struct mlx5_core_dev *dev, u32 *uarn)
+#endif
 {
 	struct mlx5_alloc_uar_mbox_in	in;
 	struct mlx5_alloc_uar_mbox_out	out;
@@ -74,6 +85,12 @@ int mlx5_cmd_alloc_uar(struct mlx5_core_dev *dev, u32 *uarn)
 	memset(&in, 0, sizeof(in));
 	memset(&out, 0, sizeof(out));
 	in.hdr.opcode = cpu_to_be16(MLX5_CMD_OP_ALLOC_UAR);
+#ifdef CONFIG_MLX5_CAPI
+       if (dev->priv.capi.cxl_mode) {
+	       printk("mlx5_cmd_alloc_uar pe_id %x\n", pe_id);
+               in.pe_id = cpu_to_be16(pe_id);
+       }
+#endif
 	err = mlx5_cmd_exec(dev, &in, sizeof(in), &out, sizeof(out));
 	if (err)
 		goto ex;
@@ -158,7 +175,12 @@ int mlx5_alloc_uuars(struct mlx5_core_dev *dev, struct mlx5_uuar_info *uuari)
 	}
 
 	for (i = 0; i < uuari->num_uars; i++) {
+#ifdef CONFIG_MLX5_CAPI
+		err = mlx5_cmd_alloc_uar(dev, &uuari->uars[i].index,
+				         dev->priv.capi.default_pe);
+#else
 		err = mlx5_cmd_alloc_uar(dev, &uuari->uars[i].index);
+#endif
 		if (err)
 			goto out_count;
 
@@ -232,7 +254,12 @@ int mlx5_alloc_map_uar(struct mlx5_core_dev *mdev, struct mlx5_uar *uar)
 	phys_addr_t uar_bar_start;
 	int err;
 
+	/*Called by Ethernet code*/
+#if CONFIG_MLX5_CAPI
+	err = mlx5_cmd_alloc_uar(mdev, &uar->index, mdev->priv.capi.default_pe);
+#else
 	err = mlx5_cmd_alloc_uar(mdev, &uar->index);
+#endif
 	if (err) {
 		mlx5_core_warn(mdev, "mlx5_cmd_alloc_uar() failed, %d\n", err);
 		return err;

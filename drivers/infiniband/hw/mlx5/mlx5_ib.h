@@ -113,6 +113,10 @@ struct mlx5_ib_ucontext {
 	u8			cqe_version;
 	/* Transport Domain number */
 	u32			tdn;
+#ifdef CONFIG_MLX5_CAPI
+	struct cxl_context     *ctx;
+	int                     pe;	
+#endif
 };
 
 static inline struct mlx5_ib_ucontext *to_mucontext(struct ib_ucontext *ibucontext)
@@ -610,9 +614,20 @@ int mlx5_MAD_IFC(struct mlx5_ib_dev *dev, int ignore_mkey, int ignore_bkey,
 struct ib_ah *mlx5_ib_create_ah(struct ib_pd *pd, struct ib_ah_attr *ah_attr);
 int mlx5_ib_query_ah(struct ib_ah *ibah, struct ib_ah_attr *ah_attr);
 int mlx5_ib_destroy_ah(struct ib_ah *ah);
+#ifdef CONFIG_MLX5_CAPI
+struct ib_srq *mlx5_ib_create_srq_wrapper(struct ib_pd *pd,
+					  struct ib_srq_init_attr *init_attr,
+					  struct ib_udata *udata);
+
+struct ib_srq *mlx5_ib_create_srq(struct ib_pd *pd,
+				  struct ib_srq_init_attr *init_attr,
+				  struct ib_udata *udata,
+				  int pe_id);
+#else
 struct ib_srq *mlx5_ib_create_srq(struct ib_pd *pd,
 				  struct ib_srq_init_attr *init_attr,
 				  struct ib_udata *udata);
+#endif
 int mlx5_ib_modify_srq(struct ib_srq *ibsrq, struct ib_srq_attr *attr,
 		       enum ib_srq_attr_mask attr_mask, struct ib_udata *udata);
 int mlx5_ib_query_srq(struct ib_srq *ibsrq, struct ib_srq_attr *srq_attr);
@@ -788,4 +803,11 @@ static inline int verify_assign_uidx(u8 cqe_version, u32 cmd_uidx,
 
 	return 0;
 }
+
+#ifdef CONFIG_MLX5_CAPI
+int mlx5_capi_get_default_pe_id(struct ib_pd *pd);
+int mlx5_capi_get_pe_id(struct ib_ucontext *ibcontext);
+int mlx5_capi_allocate_cxl_context(struct ib_ucontext *ibcontext,
+				   struct mlx5_ib_dev *dev);
+#endif
 #endif /* MLX5_IB_H */

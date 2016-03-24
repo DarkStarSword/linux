@@ -907,6 +907,11 @@ static struct ib_ucontext *mlx5_ib_alloc_ucontext(struct ib_device *ibdev,
 	if (!context)
 		return ERR_PTR(-ENOMEM);
 
+#ifdef CONFIG_MLX5_CAPI
+	err = mlx5_capi_allocate_cxl_context(&context->ibucontext, dev);
+	if (err)
+		goto out_ctx;
+#endif
 	uuari = &context->uuari;
 	mutex_init(&uuari->lock);
 	uars = kcalloc(num_uars, sizeof(*uars), GFP_KERNEL);
@@ -938,7 +943,13 @@ static struct ib_ucontext *mlx5_ib_alloc_ucontext(struct ib_device *ibdev,
 	}
 
 	for (i = 0; i < num_uars; i++) {
+#ifdef CONFIG_MLX5_CAPI
+		err = mlx5_cmd_alloc_uar(dev->mdev, &uars[i].index,
+					 mlx5_capi_get_pe_id(
+						&context->ibucontext));
+#else
 		err = mlx5_cmd_alloc_uar(dev->mdev, &uars[i].index);
+#endif
 		if (err)
 			goto out_count;
 	}
@@ -2015,7 +2026,12 @@ static int create_dev_resources(struct mlx5_ib_resources *devr)
 	attr.ext.xrc.cq = devr->c0;
 	attr.ext.xrc.xrcd = devr->x0;
 
+#ifdef CONFIG_MLX5_CAPI
+	devr->s0 = mlx5_ib_create_srq(devr->p0, &attr, NULL,
+				      dev->mdev->priv.capi.default_pe);
+#else
 	devr->s0 = mlx5_ib_create_srq(devr->p0, &attr, NULL);
+#endif
 	if (IS_ERR(devr->s0)) {
 		ret = PTR_ERR(devr->s0);
 		goto error4;
@@ -2037,7 +2053,12 @@ static int create_dev_resources(struct mlx5_ib_resources *devr)
 	attr.attr.max_sge = 1;
 	attr.attr.max_wr = 1;
 	attr.srq_type = IB_SRQT_BASIC;
+#ifdef CONFIG_MLX5_CAPI
+	devr->s1 = mlx5_ib_create_srq(devr->p0, &attr, NULL,
+				      dev->mdev->priv.capi.default_pe);
+#else
 	devr->s1 = mlx5_ib_create_srq(devr->p0, &attr, NULL);
+#endif
 	if (IS_ERR(devr->s1)) {
 		ret = PTR_ERR(devr->s1);
 		goto error5;
@@ -2239,7 +2260,11 @@ static void *mlx5_ib_add(struct mlx5_core_dev *mdev)
 	dev->ib_dev.create_ah		= mlx5_ib_create_ah;
 	dev->ib_dev.query_ah		= mlx5_ib_query_ah;
 	dev->ib_dev.destroy_ah		= mlx5_ib_destroy_ah;
-	dev->ib_dev.create_srq		= mlx5_ib_create_srq;
+#ifdef CONFIG_MLX5_CAPI
+	dev->ib_dev.create_srq		= mlx5_ib_create_srq_wrapper;
+#else
+	dev->ib_dev.create_srq          = mlx5_ib_create_srq;
+#endif
 	dev->ib_dev.modify_srq		= mlx5_ib_modify_srq;
 	dev->ib_dev.query_srq		= mlx5_ib_query_srq;
 	dev->ib_dev.destroy_srq		= mlx5_ib_destroy_srq;

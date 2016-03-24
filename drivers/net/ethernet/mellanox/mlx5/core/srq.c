@@ -445,6 +445,9 @@ int mlx5_core_create_srq(struct mlx5_core_dev *dev, struct mlx5_core_srq *srq,
 	int err;
 	struct mlx5_srq_table *table = &dev->priv.srq_table;
 
+#ifdef CONFIG_MLX5_CAPI
+	printk("mlx5_core_create_srq pe_id %x\n", be16_to_cpu(in->ctx.pe_id));
+#endif
 	srq->common.res = is_xrc ? MLX5_RES_XSRQ : MLX5_RES_SRQ;
 
 	err = create_srq_split(dev, srq, in, inlen, is_xrc);

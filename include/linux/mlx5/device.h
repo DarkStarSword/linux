@@ -733,7 +733,8 @@ struct mlx5_srq_ctx {
 	__be32			pgoff_cqn;
 	u8			rsvd1[4];
 	u8			log_pg_sz;
-	u8			rsvd2[7];
+	u8			rsvd2[5];
+	__be16			pe_id;
 	__be32			pd;
 	__be16			lwm;
 	__be16			wqe_cnt;
@@ -984,7 +985,12 @@ struct mlx5_mkey_seg {
 	__be32		bsfs_octo_size;
 	u8		rsvd2[16];
 	__be32		xlt_oct_size;
-	u8		rsvd3[3];
+#ifdef CONFIG_MLX5_CAPI
+	__be16          pe_id;
+	u8		rsvd3[1];
+#else
+	u8              rsvd3[3];
+#endif
 	u8		log2_page_size;
 	u8		rsvd4[4];
 };

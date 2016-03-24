@@ -45,6 +45,10 @@
 #include <linux/mlx5/device.h>
 #include <linux/mlx5/doorbell.h>
 
+#ifdef CONFIG_MLX5_CAPI
+#include <misc/cxl.h>
+#endif
+
 enum {
 	MLX5_BOARD_ID_LEN = 64,
 	MLX5_MAX_NAME_LEN = 16,
@@ -448,6 +452,14 @@ struct mlx5_irq_info {
 	char name[MLX5_MAX_IRQ_NAME];
 };
 
+#ifdef CONFIG_MLX5_CAPI
+struct mlx5_capi_priv {
+	int                     vsec;
+	bool                    cxl_mode;
+	int                     default_pe;
+};
+#endif
+
 struct mlx5_eswitch;
 
 struct mlx5_priv {
@@ -511,6 +523,10 @@ struct mlx5_priv {
 	unsigned long		pci_dev_data;
 	struct mlx5_flow_root_namespace *root_ns;
 	struct mlx5_flow_root_namespace *fdb_root_ns;
+
+#ifdef CONFIG_MLX5_CAPI
+	struct mlx5_capi_priv   capi;
+#endif
 };
 
 enum mlx5_device_state {
@@ -713,7 +729,11 @@ int mlx5_cmd_exec(struct mlx5_core_dev *dev, void *in, int in_size, void *out,
 int mlx5_cmd_exec_cb(struct mlx5_core_dev *dev, void *in, int in_size,
 		     void *out, int out_size, mlx5_cmd_cbk_t callback,
 		     void *context);
+#if CONFIG_MLX5_CAPI
+int mlx5_cmd_alloc_uar(struct mlx5_core_dev *dev, u32 *uarn, int pe_id);
+#else
 int mlx5_cmd_alloc_uar(struct mlx5_core_dev *dev, u32 *uarn);
+#endif
 int mlx5_cmd_free_uar(struct mlx5_core_dev *dev, u32 uarn);
 int mlx5_alloc_uuars(struct mlx5_core_dev *dev, struct mlx5_uuar_info *uuari);
 int mlx5_free_uuars(struct mlx5_core_dev *dev, struct mlx5_uuar_info *uuari);
