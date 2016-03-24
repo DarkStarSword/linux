@@ -19,3 +19,10 @@ config MLX5_CORE_EN
 	  Ethernet support in Mellanox Technologies ConnectX-4 NIC.
 	  Ethernet and Infiniband support in ConnectX-4 are currently mutually
 	  exclusive.
+
+config MLX5_CAPI
+	bool "Mellanox Technologies ConnectX-4 Ethernet support"
+	depends on PCI && MLX5_CORE
+	default n
+	---help---
+	  CAPI support in Mellanox Technologies ConnectX-4 NIC.

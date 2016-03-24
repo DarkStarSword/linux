@@ -54,6 +54,10 @@
 #include "eswitch.h"
 #endif
 
+#ifdef CONFIG_MLX5_CAPI
+#include "capi.h"
+#endif
+
 MODULE_AUTHOR("Eli Cohen <eli@mellanox.com>");
 MODULE_DESCRIPTION("Mellanox Connect-IB, ConnectX-4 core driver");
 MODULE_LICENSE("Dual BSD/GPL");
@@ -1317,6 +1321,13 @@ static int init_one(struct pci_dev *pdev,
 
 	INIT_LIST_HEAD(&priv->ctx_list);
 	spin_lock_init(&priv->ctx_lock);
+
+#ifdef CONFIG_MLX5_CAPI
+	err = mlx5_capi_initialize(dev, pdev);
+	if (err)
+		return err;
+#endif
+
 	mutex_init(&dev->pci_status_mutex);
 	mutex_init(&dev->intf_state_mutex);
 	err = mlx5_pci_init(dev, priv);

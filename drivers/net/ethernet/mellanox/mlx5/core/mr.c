@@ -65,6 +65,10 @@ int mlx5_core_create_mkey(struct mlx5_core_dev *dev, struct mlx5_core_mr *mr,
 	spin_unlock_irq(&dev->priv.mkey_lock);
 	in->seg.qpn_mkey7_0 |= cpu_to_be32(key);
 	in->hdr.opcode = cpu_to_be16(MLX5_CMD_OP_CREATE_MKEY);
+
+#ifdef CONFIG_MLX5_CAPI
+	printk("mlx5_core_create_mkey pe_id %x\n", be16_to_cpu(in->seg.pe_id));
+#endif
 	if (callback) {
 		err = mlx5_cmd_exec_cb(dev, in, inlen, out, sizeof(*out),
 				       callback, context);

@@ -168,6 +168,9 @@ static int add_keys(struct mlx5_ib_dev *dev, int c, int num)
 		spin_lock_irq(&ent->lock);
 		ent->pending++;
 		spin_unlock_irq(&ent->lock);
+#ifdef CONFIG_MLX5_CAPI
+		in->seg.pe_id = cpu_to_be16(dev->mdev->priv.capi.default_pe);
+#endif
 		err = mlx5_core_create_mkey(dev->mdev, &mr->mmr, in,
 					    sizeof(*in), reg_mr_callback,
 					    mr, &mr->out);
@@ -657,6 +660,10 @@ struct ib_mr *mlx5_ib_get_dma_mr(struct ib_pd *pd, int acc)
 	seg->qpn_mkey7_0 = cpu_to_be32(0xffffff << 8);
 	seg->start_addr = 0;
 
+#ifdef CONFIG_MLX5_CAPI
+	in->seg.pe_id = cpu_to_be16(mlx5_capi_get_default_pe_id(pd));
+#endif
+
 	err = mlx5_core_create_mkey(mdev, &mr->mmr, in, sizeof(*in), NULL, NULL,
 				    NULL);
 	if (err)
@@ -1013,6 +1020,12 @@ static struct mlx5_ib_mr *reg_create(struct ib_pd *pd, u64 virt_addr,
 	in->seg.qpn_mkey7_0 = cpu_to_be32(0xffffff << 8);
 	in->xlat_oct_act_size = cpu_to_be32(get_octo_len(virt_addr, length,
 							 1 << page_shift));
+
+#ifdef CONFIG_MLX5_CAPI
+	in->seg.pe_id =
+		cpu_to_be16(mlx5_capi_get_pe_id(pd->uobject->context));
+#endif
+
 	err = mlx5_core_create_mkey(dev->mdev, &mr->mmr, in, inlen, NULL,
 				    NULL, NULL);
 	if (err) {
@@ -1362,6 +1375,10 @@ struct ib_mr *mlx5_ib_alloc_mr(struct ib_pd *pd,
 	}
 
 	in->seg.flags = MLX5_PERM_UMR_EN | access_mode;
+#ifdef CONFIG_MLX5_CAPI
+	in->seg.pe_id =
+		cpu_to_be16(mlx5_capi_get_pe_id(pd->uobject->context));
+#endif
 	err = mlx5_core_create_mkey(dev->mdev, &mr->mmr, in, sizeof(*in),
 				    NULL, NULL, NULL);
 	if (err)
