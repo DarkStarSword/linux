@@ -1297,21 +1297,38 @@ static int cxl_configure_adapter(struct cxl *adapter, struct pci_dev *dev)
 
 	if ((rc = pnv_phb_to_cxl_mode(dev, OPAL_PHB_CAPI_MODE_CAPI)))
 		goto err;
+	pr_crit("phb switched to cxl mode\n");
 
-	pr_crit("phb switched to cxl mode, bailing\n");
+#if 0
+	pr_crit("bailing\n");
 	rc = -EBUSY;
 	goto err;
+#endif
 
+#if 1
 	/* If recovery happened, the last step is to turn on snooping.
 	 * In the non-recovery case this has no effect */
+	pr_crit("About to enable snooping\n");
 	if ((rc = pnv_phb_to_cxl_mode(dev, OPAL_PHB_CAPI_MODE_SNOOP_ON)))
 		goto err;
+	pr_crit("snooping enabled\n");
 
+#if 0
+	pr_crit("bailing\n");
+	rc = -EBUSY;
+	goto err;
+#endif
+#endif
+
+	pr_crit("About to set up time base\n");
 	if ((rc = cxl_setup_psl_timebase(adapter, dev)))
 		goto err;
+	pr_crit("time base setup call finished or skipped\n");
 
+	pr_crit("registering psl err irq\n");
 	if ((rc = cxl_native_register_psl_err_irq(adapter)))
 		goto err;
+	pr_crit("psl err irq registered\n");
 
 	return 0;
 
