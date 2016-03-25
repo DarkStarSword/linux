@@ -91,7 +91,23 @@
 
 /* This works a little different than the p1/p2 register accesses to make it
  * easier to pull out individual fields */
+#if 1
+static inline u64 AFUD_READ(struct cxl_afu *afu, u64 off)
+{
+	/* Workaround for Mellanox CX4 bug */
+	u32 hi, lo;
+	u64 hi_addr = (u64)afu->native->afu_desc_mmio + off;
+	u64 lo_addr = (u64)afu->native->afu_desc_mmio + off + 4;
+
+	hi = in_be32((void*)hi_addr);
+	lo = in_be32((void*)lo_addr);
+	dev_info(&afu->dev, "0x%016llx: 0x%08x, 0x%016llx: 0x%08x\n",
+			hi_addr, hi, lo_addr, lo);
+	return ((u64)hi << 32) | (u64)lo;
+}
+#else
 #define AFUD_READ(afu, off)		in_be64(afu->native->afu_desc_mmio + off)
+#endif
 #define AFUD_READ_LE(afu, off)		in_le64(afu->native->afu_desc_mmio + off)
 #define EXTRACT_PPC_BIT(val, bit)	(!!(val & PPC_BIT(bit)))
 #define EXTRACT_PPC_BITS(val, bs, be)	((val & PPC_BITMASK(bs, be)) >> PPC_BITLSHIFT(be))
@@ -715,11 +731,17 @@ static int pci_map_slice_regs(struct cxl_afu *afu, struct cxl *adapter, struct p
 
 	if (!(afu->native->p1n_mmio = ioremap(p1n_base, p1n_size)))
 		goto err;
+	dev_crit(&afu->dev, "Privilege 1 per slice MMIO mapped 0x%016llx -> 0x%p\n",
+			p1n_base, afu->native->p1n_mmio);
 	if (!(afu->p2n_mmio = ioremap(p2n_base, p2n_size)))
 		goto err1;
+	dev_crit(&afu->dev, "Privilege 2 per slice MMIO mapped 0x%016llx -> 0x%p\n",
+			p2n_base, afu->p2n_mmio);
 	if (afu_desc) {
 		if (!(afu->native->afu_desc_mmio = ioremap(afu_desc, adapter->native->afu_desc_size)))
 			goto err2;
+		dev_crit(&afu->dev, "AFU Descriptor mapped 0x%016llx -> 0x%p\n",
+				afu_desc, afu->native->afu_desc_mmio);
 	}
 
 	return 0;
@@ -1096,9 +1118,13 @@ static int cxl_map_adapter_regs(struct cxl *adapter, struct pci_dev *dev)
 
 	if (!(adapter->native->p1_mmio = ioremap(p1_base(dev), p1_size(dev))))
 		goto err3;
+	dev_crit(&adapter->dev, "Privilege 1 global MMIO mapped 0x%016llx -> 0x%p\n",
+			p1_base(dev), adapter->native->p1_mmio);
 
 	if (!(adapter->native->p2_mmio = ioremap(p2_base(dev), p2_size(dev))))
 		goto err4;
+	dev_crit(&adapter->dev, "Privilege 2 global MMIO mapped 0x%016llx -> 0x%p\n",
+			p2_base(dev), adapter->native->p2_mmio);
 
 	return 0;
 
