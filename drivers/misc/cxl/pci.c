@@ -273,53 +273,63 @@ static void dump_cxl_config_space(struct pci_dev *dev)
 static void dump_afu_descriptor(struct cxl_afu *afu)
 {
 	u64 val, afu_cr_num, afu_cr_off, afu_cr_len;
+#if 0
 	int i;
+#endif
 
 #define show_reg(name, what) \
 	dev_info(&afu->dev, "afu desc: %30s: %#llx\n", name, what)
+#define show_reg_where(where, name, what) \
+	dev_info(&afu->dev, "afu desc: %30s: 0x%016llx (0x%x)\n", name, what, where)
 
 	val = AFUD_READ_INFO(afu);
-	show_reg("num_ints_per_process", AFUD_NUM_INTS_PER_PROC(val));
-	show_reg("num_of_processes", AFUD_NUM_PROCS(val));
-	show_reg("num_of_afu_CRs", AFUD_NUM_CRS(val));
-	show_reg("req_prog_mode", val & 0xffffULL);
+	show_reg_where(0, "info", val);
+	show_reg(".num_ints_per_process", AFUD_NUM_INTS_PER_PROC(val));
+	show_reg(".num_of_processes", AFUD_NUM_PROCS(val));
+	show_reg(".num_of_afu_CRs", AFUD_NUM_CRS(val));
+	show_reg(".req_prog_mode", val & 0xffffULL);
 	afu_cr_num = AFUD_NUM_CRS(val);
 
 	val = AFUD_READ(afu, 0x8);
-	show_reg("Reserved", val);
+	show_reg_where(0x8, "Reserved", val);
 	val = AFUD_READ(afu, 0x10);
-	show_reg("Reserved", val);
+	show_reg_where(0x10, "Reserved", val);
 	val = AFUD_READ(afu, 0x18);
-	show_reg("Reserved", val);
+	show_reg_where(0x18, "Reserved", val);
 
 	val = AFUD_READ_CR(afu);
-	show_reg("Reserved", (val >> (63-7)) & 0xff);
-	show_reg("AFU_CR_len", AFUD_CR_LEN(val));
+	show_reg_where(0x20, "cr len", val);
+	show_reg(".Reserved", (val >> (63-7)) & 0xff);
+	show_reg(".AFU_CR_len", AFUD_CR_LEN(val));
 	afu_cr_len = AFUD_CR_LEN(val) * 256;
 
 	val = AFUD_READ_CR_OFF(afu);
 	afu_cr_off = val;
-	show_reg("AFU_CR_offset", val);
+	show_reg_where(0x28, "AFU_CR_offset", val);
 
 	val = AFUD_READ_PPPSA(afu);
-	show_reg("PerProcessPSA_control", (val >> (63-7)) & 0xff);
-	show_reg("PerProcessPSA Length", AFUD_PPPSA_LEN(val));
+	show_reg_where(0x30, "pppsa", val);
+	show_reg(".PerProcessPSA_control", (val >> (63-7)) & 0xff);
+	show_reg(".PerProcessPSA Length", AFUD_PPPSA_LEN(val));
 
 	val = AFUD_READ_PPPSA_OFF(afu);
-	show_reg("PerProcessPSA_offset", val);
+	show_reg_where(0x38, "PerProcessPSA_offset", val);
 
 	val = AFUD_READ_EB(afu);
-	show_reg("Reserved", (val >> (63-7)) & 0xff);
-	show_reg("AFU_EB_len", AFUD_EB_LEN(val));
+	show_reg_where(0x40, "eb", val);
+	show_reg(".Reserved", (val >> (63-7)) & 0xff);
+	show_reg(".AFU_EB_len", AFUD_EB_LEN(val));
 
 	val = AFUD_READ_EB_OFF(afu);
-	show_reg("AFU_EB_offset", val);
+	show_reg_where(0x48, "AFU_EB_offset", val);
 
+#if 0
 	for (i = 0; i < afu_cr_num; i++) {
 		val = AFUD_READ_LE(afu, afu_cr_off + i * afu_cr_len);
 		show_reg("CR Vendor", val & 0xffff);
 		show_reg("CR Device", (val >> 16) & 0xffff);
 	}
+#endif
 #undef show_reg
 }
 
@@ -935,6 +945,10 @@ static int pci_configure_afu(struct cxl_afu *afu, struct cxl *adapter, struct pc
 
 	if (cxl_verbose)
 		dump_afu_descriptor(afu);
+
+	pr_crit("bailing\n");
+	rc = -EBUSY;
+	goto err1;
 
 	if ((rc = cxl_read_afu_descriptor(afu)))
 		goto err1;
