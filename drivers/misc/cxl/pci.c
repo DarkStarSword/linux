@@ -284,7 +284,11 @@ static void dump_afu_descriptor(struct cxl_afu *afu)
 	show_reg("num_of_processes", AFUD_NUM_PROCS(val));
 	show_reg("num_of_afu_CRs", AFUD_NUM_CRS(val));
 	show_reg("req_prog_mode", val & 0xffffULL);
+#if 0
 	afu_cr_num = AFUD_NUM_CRS(val);
+#else /* Hacks for CX4 */
+	afu_cr_num = 0;
+#endif
 
 	val = AFUD_READ(afu, 0x8);
 	show_reg("Reserved", val);
@@ -845,6 +849,7 @@ void cxl_pci_release_afu(struct device *dev)
 
 /* Expects AFU struct to have recently been zeroed out */
 static int cxl_read_afu_descriptor(struct cxl_afu *afu)
+#if 0
 {
 	u64 val;
 
@@ -888,6 +893,26 @@ static int cxl_read_afu_descriptor(struct cxl_afu *afu)
 
 	return 0;
 }
+#else /* Hacks for CX4 */
+{
+	afu->pp_irqs = 0;
+	afu->max_procs_virtualised = 0xffff;
+	afu->crs_num = 0;
+
+	afu->modes_supported |= CXL_MODE_DIRECTED;
+
+	afu->pp_size = 0;
+	afu->psa = 0;
+
+	afu->crs_len = 0;
+	afu->crs_offset = 0;
+
+	afu->eb_len = 0;
+	afu->eb_offset = 0;
+
+	return 0;
+}
+#endif
 
 static int cxl_afu_descriptor_looks_ok(struct cxl_afu *afu)
 {
