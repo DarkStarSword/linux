@@ -11,6 +11,10 @@ config CXL_KERNEL_API
 	bool
 	default n
 
+config CXL_KERNEL2_API
+	bool
+	default n
+
 config CXL_EEH
 	bool
 	default n
@@ -20,6 +24,7 @@ config CXL
 	depends on PPC_POWERNV && PCI_MSI && EEH
 	select CXL_BASE
 	select CXL_KERNEL_API
+	select CXL_KERNEL2_API
 	select CXL_EEH
 	default m
 	help
