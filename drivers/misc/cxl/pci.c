@@ -271,7 +271,7 @@ static void dump_cxl_config_space(struct pci_dev *dev)
 #undef show_reg
 }
 
-static void dump_afu_descriptor(struct cxl_afu *afu)
+static void dump_afu_descriptor(struct cxl_afu *afu, struct pci_dev *dev)
 {
 	u64 val, afu_cr_num, afu_cr_off, afu_cr_len;
 	int i;
@@ -284,7 +284,12 @@ static void dump_afu_descriptor(struct cxl_afu *afu)
 	show_reg("num_of_processes", AFUD_NUM_PROCS(val));
 	show_reg("num_of_afu_CRs", AFUD_NUM_CRS(val));
 	show_reg("req_prog_mode", val & 0xffffULL);
-	afu_cr_num = AFUD_NUM_CRS(val);
+
+	if (dev->vendor == PCI_VENDOR_ID_MELLANOX && dev->device == 0x1013) {
+		/* XXX: Hacks for CX4 */
+		afu_cr_num = 0;
+	} else
+		afu_cr_num = AFUD_NUM_CRS(val);
 
 	val = AFUD_READ(afu, 0x8);
 	show_reg("Reserved", val);
@@ -849,7 +854,7 @@ void cxl_pci_release_afu(struct device *dev)
 }
 
 /* Expects AFU struct to have recently been zeroed out */
-static int cxl_read_afu_descriptor(struct cxl_afu *afu)
+static int cxl_read_afu_descriptor(struct cxl_afu *afu, struct pci_dev *dev)
 {
 	u64 val;
 
@@ -858,18 +863,25 @@ static int cxl_read_afu_descriptor(struct cxl_afu *afu)
 	afu->max_procs_virtualised = AFUD_NUM_PROCS(val);
 	afu->crs_num = AFUD_NUM_CRS(val);
 
-	if (AFUD_AFU_DIRECTED(val))
+	if (dev->vendor == PCI_VENDOR_ID_MELLANOX && dev->device == 0x1013) {
+		/* XXX: Hacks for CX4 */
 		afu->modes_supported |= CXL_MODE_DIRECTED;
-	if (AFUD_DEDICATED_PROCESS(val))
-		afu->modes_supported |= CXL_MODE_DEDICATED;
-	if (AFUD_TIME_SLICED(val))
-		afu->modes_supported |= CXL_MODE_TIME_SLICED;
+		afu->pp_size = 0;
+		afu->psa = 0;
+	} else {
+		if (AFUD_AFU_DIRECTED(val))
+			afu->modes_supported |= CXL_MODE_DIRECTED;
+		if (AFUD_DEDICATED_PROCESS(val))
+			afu->modes_supported |= CXL_MODE_DEDICATED;
+		if (AFUD_TIME_SLICED(val))
+			afu->modes_supported |= CXL_MODE_TIME_SLICED;
 
-	val = AFUD_READ_PPPSA(afu);
-	afu->pp_size = AFUD_PPPSA_LEN(val) * 4096;
-	afu->psa = AFUD_PPPSA_PSA(val);
-	if ((afu->pp_psa = AFUD_PPPSA_PP(val)))
-		afu->native->pp_offset = AFUD_READ_PPPSA_OFF(afu);
+		val = AFUD_READ_PPPSA(afu);
+		afu->pp_size = AFUD_PPPSA_LEN(val) * 4096;
+		afu->psa = AFUD_PPPSA_PSA(val);
+		if ((afu->pp_psa = AFUD_PPPSA_PP(val)))
+			afu->native->pp_offset = AFUD_READ_PPPSA_OFF(afu);
+	}
 
 	val = AFUD_READ_CR(afu);
 	afu->crs_len = AFUD_CR_LEN(val) * 256;
@@ -1033,9 +1045,9 @@ static int pci_configure_afu(struct cxl_afu *afu, struct cxl *adapter, struct pc
 		goto err1;
 
 	if (cxl_verbose)
-		dump_afu_descriptor(afu);
+		dump_afu_descriptor(afu, dev);
 
-	if ((rc = cxl_read_afu_descriptor(afu)))
+	if ((rc = cxl_read_afu_descriptor(afu, dev)))
 		goto err1;
 
 	if ((rc = cxl_afu_descriptor_looks_ok(afu)))
