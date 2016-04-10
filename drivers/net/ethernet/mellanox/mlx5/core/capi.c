@@ -119,6 +119,8 @@ int mlx5_capi_initialize(struct mlx5_core_dev *dev,
 			return -ENODEV;
 
 		capi->default_pe = cxl_process_element(capi_context);
+
+		cxl_start_context(capi_context, 0, NULL);
 	}
 
 out:
