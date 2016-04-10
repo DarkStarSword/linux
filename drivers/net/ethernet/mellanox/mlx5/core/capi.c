@@ -71,6 +71,7 @@ int mlx5_capi_initialize(struct mlx5_core_dev *dev,
 	struct pci_dev        *capi_pdev;
 	int                    err = 0;
 	bool                   is_function0 = !PCI_FUNC(pdev->devfn);
+	struct cxl_context    *capi_context;
 
 	dev_info(&pdev->dev, "mlx5_capi_initialize entry, is_function0 %d\n", is_function0);
 	priv = &dev->priv;
@@ -108,12 +109,16 @@ int mlx5_capi_initialize(struct mlx5_core_dev *dev,
 		err = -EPERM;
 		goto out;
 	} else {
-		capi->default_pe = PCI_FUNC(pdev->devfn);
-		
 		/* our driver does not control function 0 */
 		if (is_function0)
 			err = -EPERM;
 			goto out;
+
+		capi_context = cxl_get_context(pdev);
+		if (!capi_context)
+			return -ENODEV;
+
+		capi->default_pe = cxl_process_element(capi_context);
 	}
 
 out:
