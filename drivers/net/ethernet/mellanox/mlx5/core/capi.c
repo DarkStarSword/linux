@@ -115,10 +115,13 @@ int mlx5_capi_initialize(struct mlx5_core_dev *dev,
 			goto out;
 
 		capi_context = cxl_get_context(pdev);
-		if (!capi_context)
+		if (!capi_context) {
+			dev_err(&pdev->dev, "No cxl context!\n");
 			return -ENODEV;
+		}
 
 		capi->default_pe = cxl_process_element(capi_context);
+		dev_info(&pdev->dev, "cxl pe: %d\n", capi->default_pe);
 
 		cxl_start_context(capi_context, 0, NULL);
 	}
