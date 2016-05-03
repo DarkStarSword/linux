@@ -7,6 +7,8 @@
  * 2 of the License, or (at your option) any later version.
  */
 
+#define DEBUG
+
 #include <linux/spinlock.h>
 #include <linux/sched.h>
 #include <linux/slab.h>
@@ -225,7 +227,7 @@ static void attach_spa(struct cxl_afu *afu)
 	spap = virt_to_phys(afu->native->spa) & CXL_PSL_SPAP_Addr;
 	spap |= ((afu->native->spa_size >> (12 - CXL_PSL_SPAP_Size_Shift)) - 1) & CXL_PSL_SPAP_Size;
 	spap |= CXL_PSL_SPAP_V;
-	pr_devel("cxl: SPA allocated at 0x%p. Max processes: %i, sw_command_status: 0x%p CXL_PSL_SPAP_An=0x%016llx\n",
+	printk("cxl: SPA allocated at 0x%p. Max processes: %i, sw_command_status: 0x%p CXL_PSL_SPAP_An=0x%016llx\n",
 		afu->native->spa, afu->native->spa_max_procs,
 		afu->native->sw_command_status, spap);
 	cxl_p1n_write(afu, CXL_PSL_SPAP_An, spap);
@@ -516,6 +518,8 @@ static void update_ivtes_directed(struct cxl_context *ctx)
 	}
 
 	for (r = 0; r < CXL_IRQ_RANGES; r++) {
+		dev_info(&ctx->afu->dev, "Updating IVTEs for pe=%i offset[%i]=%lu range[%i]=%lu\n",
+				ctx->pe, r, ctx->irqs.offset[r], r, ctx->irqs.range[r]);
 		ctx->elem->ivte_offsets[r] = cpu_to_be16(ctx->irqs.offset[r]);
 		ctx->elem->ivte_ranges[r] = cpu_to_be16(ctx->irqs.range[r]);
 	}
