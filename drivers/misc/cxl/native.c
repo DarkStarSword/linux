@@ -431,6 +431,17 @@ static int remove_process_element(struct cxl_context *ctx)
 	return rc;
 }
 
+static int update_process_element(struct cxl_context *ctx)
+{
+	int rc = 0;
+
+	mutex_lock(&ctx->afu->native->spa_mutex);
+	pr_devel("%s Updating pe: %i started\n", __func__, ctx->pe);
+	rc = do_process_element_cmd(ctx, CXL_SPA_SW_CMD_UPDATE, CXL_PE_SOFTWARE_STATE_V);
+	pr_devel("%s Updating pe: %i finished\n", __func__, ctx->pe);
+	mutex_unlock(&ctx->afu->native->spa_mutex);
+	return rc;
+}
 
 void cxl_assign_psn_space(struct cxl_context *ctx)
 {
@@ -509,10 +520,23 @@ static u64 calculate_sr(struct cxl_context *ctx, bool real_mode)
 	return sr;
 }
 
+static void update_ivtes_directed(struct cxl_context *ctx)
+{
+	int r;
+
+	for (r = 0; r < CXL_IRQ_RANGES; r++) {
+		ctx->elem->ivte_offsets[r] = cpu_to_be16(ctx->irqs.offset[r]);
+		ctx->elem->ivte_ranges[r] = cpu_to_be16(ctx->irqs.range[r]);
+	}
+
+	if (ctx->status == STARTED)
+		WARN_ON(update_process_element(ctx));
+}
+
 static int attach_afu_directed(struct cxl_context *ctx, bool real_mode, u64 wed, u64 amr)
 {
 	u32 pid;
-	int r, result;
+	int result;
 
 	cxl_assign_psn_space(ctx);
 
@@ -547,10 +571,7 @@ static int attach_afu_directed(struct cxl_context *ctx, bool real_mode, u64 wed,
 		ctx->irqs.range[0] = 1;
 	}
 
-	for (r = 0; r < CXL_IRQ_RANGES; r++) {
-		ctx->elem->ivte_offsets[r] = cpu_to_be16(ctx->irqs.offset[r]);
-		ctx->elem->ivte_ranges[r] = cpu_to_be16(ctx->irqs.range[r]);
-	}
+	update_ivtes_directed(ctx);
 
 	ctx->elem->common.amr = cpu_to_be64(amr);
 	ctx->elem->common.wed = cpu_to_be64(wed);
@@ -602,6 +623,22 @@ static int activate_dedicated_process(struct cxl_afu *afu)
 	return cxl_chardev_d_afu_add(afu);
 }
 
+static void update_ivtes_dedicated(struct cxl_context *ctx)
+{
+	struct cxl_afu *afu = ctx->afu;
+
+	cxl_p1n_write(afu, CXL_PSL_IVTE_Offset_An,
+		       (((u64)ctx->irqs.offset[0] & 0xffff) << 48) |
+		       (((u64)ctx->irqs.offset[1] & 0xffff) << 32) |
+		       (((u64)ctx->irqs.offset[2] & 0xffff) << 16) |
+			((u64)ctx->irqs.offset[3] & 0xffff));
+	cxl_p1n_write(afu, CXL_PSL_IVTE_Limit_An, (u64)
+		       (((u64)ctx->irqs.range[0] & 0xffff) << 48) |
+		       (((u64)ctx->irqs.range[1] & 0xffff) << 32) |
+		       (((u64)ctx->irqs.range[2] & 0xffff) << 16) |
+			((u64)ctx->irqs.range[3] & 0xffff));
+}
+
 static int attach_dedicated(struct cxl_context *ctx, bool real_mode, u64 wed, u64 amr)
 {
 	struct cxl_afu *afu = ctx->afu;
@@ -620,16 +657,7 @@ static int attach_dedicated(struct cxl_context *ctx, bool real_mode, u64 wed, u6
 
 	cxl_prefault(ctx, wed);
 
-	cxl_p1n_write(afu, CXL_PSL_IVTE_Offset_An,
-		       (((u64)ctx->irqs.offset[0] & 0xffff) << 48) |
-		       (((u64)ctx->irqs.offset[1] & 0xffff) << 32) |
-		       (((u64)ctx->irqs.offset[2] & 0xffff) << 16) |
-			((u64)ctx->irqs.offset[3] & 0xffff));
-	cxl_p1n_write(afu, CXL_PSL_IVTE_Limit_An, (u64)
-		       (((u64)ctx->irqs.range[0] & 0xffff) << 48) |
-		       (((u64)ctx->irqs.range[1] & 0xffff) << 32) |
-		       (((u64)ctx->irqs.range[2] & 0xffff) << 16) |
-			((u64)ctx->irqs.range[3] & 0xffff));
+	update_ivtes_dedicated(ctx);
 
 	cxl_p2n_write(afu, CXL_PSL_AMR_An, amr);
 
@@ -709,6 +737,15 @@ static inline int detach_process_native_dedicated(struct cxl_context *ctx)
 	cxl_afu_disable(ctx->afu);
 	cxl_psl_purge(ctx->afu);
 	return 0;
+}
+
+static void native_update_ivtes(struct cxl_context *ctx)
+{
+	if (ctx->afu->current_mode == CXL_MODE_DIRECTED)
+		return update_ivtes_directed(ctx);
+	if (ctx->afu->current_mode == CXL_MODE_DEDICATED)
+		return update_ivtes_dedicated(ctx);
+	WARN(1, "native_update_ivtes: Bad mode\n");
 }
 
 static inline int detach_process_native_afu_directed(struct cxl_context *ctx)
@@ -1125,6 +1162,7 @@ const struct cxl_backend_ops cxl_native_ops = {
 	.ack_irq = native_ack_irq,
 	.attach_process = native_attach_process,
 	.detach_process = native_detach_process,
+	.update_ivtes = native_update_ivtes,
 	.support_attributes = native_support_attributes,
 	.link_ok = cxl_adapter_link_ok,
 	.release_afu = cxl_pci_release_afu,
