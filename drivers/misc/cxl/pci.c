@@ -467,7 +467,7 @@ static u64 timebase_read_xsl(struct cxl *adapter)
 	return cxl_p1_read(adapter, CXL_XSL_Timebase);
 }
 
-static void cxl_setup_psl_timebase(struct cxl *adapter, struct pci_dev *dev)
+static void __maybe_unused cxl_setup_psl_timebase(struct cxl *adapter, struct pci_dev *dev)
 {
 	u64 psl_tb;
 	int delta;
@@ -1418,8 +1418,10 @@ static int cxl_configure_adapter(struct cxl *adapter, struct pci_dev *dev)
 	if ((rc = pnv_phb_to_cxl_mode(dev, OPAL_PHB_CAPI_MODE_SNOOP_ON)))
 		goto err;
 
+#if 0 /* Timebase makes for a noisy PCI analyser dump, disable temporarily, re-enable for upstreaming */
 	/* Ignore error, adapter init is not dependant on timebase sync */
 	cxl_setup_psl_timebase(adapter, dev);
+#endif
 
 	if ((rc = cxl_native_register_psl_err_irq(adapter)))
 		goto err;
