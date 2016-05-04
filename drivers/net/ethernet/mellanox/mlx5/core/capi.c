@@ -3,6 +3,7 @@
 #include <linux/mlx5/driver.h>
 #include <misc/cxl.h>
 #include <linux/pci.h>
+#include "mlx5_core.h"
 
 #define CXL_PCI_VSEC_ID  0x1280
 #define CXL_READ_VSEC_MODE_CONTROL(dev, vsec, dest) \
@@ -28,12 +29,9 @@ static int mlx5_capi_get_capi_mode (struct pci_dev *dev, int vsec, bool *mode)
 	u8 val;
 	int rc;
 
-	if ((rc = CXL_READ_VSEC_MODE_CONTROL(dev, vsec, &val))) {
-		dev_err(&dev->dev, "failed to read current mode control: %i", rc);
+	if ((rc = CXL_READ_VSEC_MODE_CONTROL(dev, vsec, &val)))
 		return rc;	
-	}
 
-	printk ("mode control =%x\n", val);
 	if (val & CXL_VSEC_PROTOCOL_ENABLE)
 		*mode = 1;
 	else
@@ -56,6 +54,82 @@ mlx5_capi_find_function0_dev(struct pci_dev *pdev)
 	return NULL;
 }
 
+int mlx5_capi_cleanup(struct mlx5_core_dev *dev,
+		      struct pci_dev *pdev)
+{
+	struct mlx5_priv      *priv;
+	struct mlx5_capi_priv *capi;
+	struct cxl_context    *capi_context;
+
+	priv = &dev->priv;
+	capi = &priv->capi;
+
+	if (!capi->cxl_mode)
+		return 0;
+
+	capi_context = cxl_get_context(pdev);
+	if (!capi_context) {
+		mlx5_core_err(dev, "No default PE context\n");
+		return -ENODEV;
+	}
+
+	cxl_stop_context(capi_context);
+	cxl_stop_context(capi->direct_ctx);		
+	return 0;
+}
+
+/* This function is called by both normal flow and resume flow */
+int mlx5_capi_setup(struct mlx5_core_dev *dev, struct pci_dev *pdev)
+{
+	struct mlx5_priv      *priv;
+	struct mlx5_capi_priv *capi;
+	struct cxl_context    *capi_context;
+	int err = 0;
+
+	priv = &dev->priv;
+	capi = &priv->capi;
+
+	if (!capi->cxl_mode) 
+		return 0;
+	
+	/* Non translated PE */
+	capi_context = cxl_dev_context_init(pdev);
+	if (!capi_context) {
+		mlx5_core_err(dev, "Cannot allocate PE context!\n");
+		err = -ENODEV;
+		goto out;
+	}
+	capi->direct_pe = cxl_process_element(capi_context);
+	cxl_start_context2(capi_context, 0, NULL, true);
+	capi->direct_ctx = capi_context;
+
+	/* Default PE */
+	capi_context = cxl_get_context(pdev);
+	if (!capi_context) {
+		mlx5_core_err(dev, "No default PE context!\n");
+		cxl_stop_context(capi->direct_ctx);
+		err = -ENODEV;
+		goto out;
+	}
+	capi->default_pe = cxl_process_element(capi_context);
+	cxl_start_context(capi_context, 0, NULL);
+
+	/* Update the PE to FW */
+	wmb();
+	iowrite32be((capi->direct_pe << 16) | capi->default_pe,
+		    &dev->iseg->direct_pe);
+	mmiowb();
+
+	mlx5_core_dbg(dev, "mlx5_capi_setup\
+			    vsec=%04x direct_pe=%04x default_pe=%04x\
+			    cxl_mode=%d err=%d\n",
+			    capi->vsec, capi->direct_pe, capi->default_pe,
+			    capi->cxl_mode, err);
+
+out:
+	return err;
+}
+
 /* Return 0 if
  *   the card is not CAPI capable
  *   the card is already in CAPI mode and the pci device is not function 0
@@ -67,13 +141,11 @@ int mlx5_capi_initialize(struct mlx5_core_dev *dev,
 			 struct pci_dev *pdev)
 {
 	struct mlx5_priv      *priv;
-        struct mlx5_capi_priv *capi;
+	struct mlx5_capi_priv *capi;
 	struct pci_dev        *capi_pdev;
 	int                    err = 0;
 	bool                   is_function0 = !PCI_FUNC(pdev->devfn);
-	struct cxl_context    *capi_context;
 
-	dev_info(&pdev->dev, "mlx5_capi_initialize entry, is_function0 %d\n", is_function0);
 	priv = &dev->priv;
 	capi = &priv->capi;
 
@@ -110,32 +182,16 @@ int mlx5_capi_initialize(struct mlx5_core_dev *dev,
 		goto out;
 	} else {
 		/* our driver does not control function 0 */
-		if (is_function0)
+		if (is_function0) {
 			err = -EPERM;
 			goto out;
-
-		capi_context = cxl_get_context(pdev);
-		if (!capi_context) {
-			dev_err(&pdev->dev, "No cxl context!\n");
-			return -ENODEV;
 		}
-
-		capi->default_pe = cxl_process_element(capi_context);
-		dev_info(&pdev->dev, "cxl pe: %d\n", capi->default_pe);
-
-		cxl_start_context(capi_context, 0, NULL);
 	}
 
 out:
-	dev_info(&pdev->dev, "vsec=%04x default_pe=%04x cxl_mode=%d err=%d\n",
-		 capi->vsec, capi->default_pe, capi->cxl_mode, err);
-
-	if (capi_pdev && (capi_pdev != pdev)) {
-		printk("Clean up capi pdev\n");
+	if (capi_pdev && (capi_pdev != pdev))
 		pci_dev_put(capi_pdev);
-	}
 
-	//return -EPERM;
 	return err;
 }
 #endif

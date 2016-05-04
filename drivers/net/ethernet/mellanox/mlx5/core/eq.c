@@ -245,6 +245,7 @@ static int mlx5_eq_int(struct mlx5_core_dev *dev, struct mlx5_eq *eq)
 			break;
 
 		case MLX5_EVENT_TYPE_CMD:
+			printk("Got MLX5_EVENT_TYPE_CMD\n");
 			mlx5_cmd_comp_handler(dev, be32_to_cpu(eqe->data.cmd.vector));
 			break;
 
@@ -354,6 +355,7 @@ int mlx5_create_map_eq(struct mlx5_core_dev *dev, struct mlx5_eq *eq, u8 vecidx,
 	int err;
 	int inlen;
 
+	printk("vecidx %d, nent = %d, mask = %llx, name = %s, uar_index = %d\n", vecidx, nent, mask, name, uar->index);
 	eq->nent = roundup_pow_of_two(nent + MLX5_NUM_SPARE_EQE);
 	eq->cons_index = 0;
 	err = mlx5_buf_alloc(dev, eq->nent * MLX5_EQE_SIZE, &eq->buf);

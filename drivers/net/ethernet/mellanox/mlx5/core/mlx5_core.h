@@ -45,7 +45,7 @@
 extern int mlx5_core_debug_mask;
 
 #define mlx5_core_dbg(__dev, format, ...)				\
-	dev_dbg(&(__dev)->pdev->dev, "%s:%s:%d:(pid %d): " format,	\
+	dev_info(&(__dev)->pdev->dev, "%s:%s:%d:(pid %d): " format,	\
 		 (__dev)->priv.name, __func__, __LINE__, current->pid,	\
 		 ##__VA_ARGS__)
 

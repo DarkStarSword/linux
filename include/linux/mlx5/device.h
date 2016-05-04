@@ -464,7 +464,8 @@ struct health_buffer {
 struct mlx5_init_seg {
 	__be32			fw_rev;
 	__be32			cmdif_rev_fw_sub;
-	__be32			rsvd0[2];
+	__be32			rsvd0[1];
+	__be32                  direct_pe;
 	__be32			cmdq_addr_h;
 	__be32			cmdq_addr_l_sz;
 	__be32			cmd_dbell;

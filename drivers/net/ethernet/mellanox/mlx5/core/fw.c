@@ -99,6 +99,9 @@ int mlx5_query_hca_caps(struct mlx5_core_dev *dev)
 	int err;
 
 	err = mlx5_core_get_caps(dev, MLX5_CAP_GENERAL, HCA_CAP_OPMOD_GET_CUR);
+	
+	printk("log_max_eq %d\n", MLX5_CAP_GEN(dev, log_max_eq));
+
 	if (err)
 		return err;
 

@@ -457,6 +457,8 @@ struct mlx5_capi_priv {
 	int                     vsec;
 	bool                    cxl_mode;
 	int                     default_pe;
+	int                     direct_pe;
+	struct cxl_context     *direct_ctx;	
 };
 #endif
 

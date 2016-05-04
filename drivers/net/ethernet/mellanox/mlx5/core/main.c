@@ -264,7 +264,7 @@ static void release_bar(struct pci_dev *pdev)
 	pci_release_regions(pdev);
 }
 
-static int mlx5_enable_msix(struct mlx5_core_dev *dev)
+int mlx5_enable_msix(struct mlx5_core_dev *dev)
 {
 	struct mlx5_priv *priv = &dev->priv;
 	struct mlx5_eq_table *table = &priv->eq_table;
@@ -272,25 +272,35 @@ static int mlx5_enable_msix(struct mlx5_core_dev *dev)
 	int nvec;
 	int i;
 
+	printk("mlx5_enable_msix\n");
+
 	nvec = MLX5_CAP_GEN(dev, num_ports) * num_online_cpus() +
 	       MLX5_EQ_VEC_COMP_BASE;
+	printk("nvec %d, num_eqs %d\n", nvec, num_eqs);
+
 	nvec = min_t(int, nvec, num_eqs);
+	
 	if (nvec <= MLX5_EQ_VEC_COMP_BASE)
 		return -ENOMEM;
 
+	printk("mlx5_enable_msix before kcalloc\n");
 	priv->msix_arr = kcalloc(nvec, sizeof(*priv->msix_arr), GFP_KERNEL);
 
 	priv->irq_info = kcalloc(nvec, sizeof(*priv->irq_info), GFP_KERNEL);
 	if (!priv->msix_arr || !priv->irq_info)
 		goto err_free_msix;
 
+	printk("mlx5_enable_msix after kcalloc\n");
+
 	for (i = 0; i < nvec; i++)
 		priv->msix_arr[i].entry = i;
 
 	nvec = pci_enable_msix_range(dev->pdev, priv->msix_arr,
 				     MLX5_EQ_VEC_COMP_BASE + 1, nvec);
+	printk("nvec %d\n", nvec);
 	if (nvec < 0)
 		return nvec;
+	printk("pci_enable_msix_range\n");
 
 	table->num_comp_vectors = nvec - MLX5_EQ_VEC_COMP_BASE;
 
@@ -361,10 +371,11 @@ int mlx5_core_get_caps(struct mlx5_core_dev *dev, enum mlx5_cap_type cap_type,
 
 	MLX5_SET(query_hca_cap_in, in, opcode, MLX5_CMD_OP_QUERY_HCA_CAP);
 	MLX5_SET(query_hca_cap_in, in, op_mod, opmod);
+
 	err = mlx5_cmd_exec(dev, in, sizeof(in), out, out_sz);
 	if (err)
 		goto query_ex;
-
+	
 	err = mlx5_cmd_status_to_err_v2(out);
 	if (err) {
 		mlx5_core_warn(dev,
@@ -373,7 +384,7 @@ int mlx5_core_get_caps(struct mlx5_core_dev *dev, enum mlx5_cap_type cap_type,
 		goto query_ex;
 	}
 
-	hca_caps =  MLX5_ADDR_OF(query_hca_cap_out, out, capability);
+	hca_caps =  MLX5_ADDR_OF(query_hca_cap_out, out, capability);	
 
 	switch (cap_mode) {
 	case HCA_CAP_OPMOD_GET_MAX:
@@ -980,6 +991,11 @@ static int mlx5_load_one(struct mlx5_core_dev *dev, struct mlx5_priv *priv)
 	int err;
 
 	mutex_lock(&dev->intf_state_mutex);
+
+#ifdef CONFIG_MLX5_CAPI
+	mlx5_capi_setup(dev, pdev);
+#endif
+
 	if (dev->interface_state == MLX5_INTERFACE_STATE_UP) {
 		dev_warn(&dev->pdev->dev, "%s: interface is up, NOP\n",
 			 __func__);
@@ -1014,54 +1030,63 @@ static int mlx5_load_one(struct mlx5_core_dev *dev, struct mlx5_priv *priv)
 		dev_err(&pdev->dev, "enable hca failed\n");
 		goto err_pagealloc_cleanup;
 	}
+	printk("mlx5_core_enable_hca\n");
 
 	err = mlx5_core_set_issi(dev);
 	if (err) {
 		dev_err(&pdev->dev, "failed to set issi\n");
 		goto err_disable_hca;
 	}
+	printk("mlx5_core_set_issi done\n");
 
 	err = mlx5_satisfy_startup_pages(dev, 1);
 	if (err) {
 		dev_err(&pdev->dev, "failed to allocate boot pages\n");
 		goto err_disable_hca;
 	}
+	printk("mlx5_satisfy_startup_pages\n");
 
 	err = set_hca_ctrl(dev);
 	if (err) {
 		dev_err(&pdev->dev, "set_hca_ctrl failed\n");
 		goto reclaim_boot_pages;
 	}
+	printk("set_hca_ctrl\n");
 
 	err = handle_hca_cap(dev);
 	if (err) {
 		dev_err(&pdev->dev, "handle_hca_cap failed\n");
 		goto reclaim_boot_pages;
 	}
+	printk("handle_hca_cap\n");
 
 	err = handle_hca_cap_atomic(dev);
 	if (err) {
 		dev_err(&pdev->dev, "handle_hca_cap_atomic failed\n");
 		goto reclaim_boot_pages;
 	}
+	printk("handle_hca_cap_atomic\n");
 
 	err = mlx5_satisfy_startup_pages(dev, 0);
 	if (err) {
 		dev_err(&pdev->dev, "failed to allocate init pages\n");
 		goto reclaim_boot_pages;
 	}
+	printk("mlx5_satisfy_startup_pages\n");
 
 	err = mlx5_pagealloc_start(dev);
 	if (err) {
 		dev_err(&pdev->dev, "mlx5_pagealloc_start failed\n");
 		goto reclaim_boot_pages;
 	}
+	printk("mlx5_pagealloc_start\n");
 
 	err = mlx5_cmd_init_hca(dev);
 	if (err) {
 		dev_err(&pdev->dev, "init hca failed\n");
 		goto err_pagealloc_stop;
 	}
+	printk("mlx5_cmd_init_hca\n");
 
 	mlx5_start_health_poll(dev);
 
@@ -1070,51 +1095,60 @@ static int mlx5_load_one(struct mlx5_core_dev *dev, struct mlx5_priv *priv)
 		dev_err(&pdev->dev, "query hca failed\n");
 		goto err_stop_poll;
 	}
+	printk("mlx5_query_hca_caps\n");
 
 	err = mlx5_query_board_id(dev);
 	if (err) {
 		dev_err(&pdev->dev, "query board id failed\n");
 		goto err_stop_poll;
 	}
+	printk("mlx5_query_board_id\n");
 
 	err = mlx5_enable_msix(dev);
 	if (err) {
 		dev_err(&pdev->dev, "enable msix failed\n");
 		goto err_stop_poll;
 	}
+	printk("mlx5_enable_msix\n");
 
 	err = mlx5_eq_init(dev);
 	if (err) {
 		dev_err(&pdev->dev, "failed to initialize eq\n");
 		goto disable_msix;
 	}
+	printk("mlx5_eq_init\n");
 
 	err = mlx5_alloc_uuars(dev, &priv->uuari);
 	if (err) {
 		dev_err(&pdev->dev, "Failed allocating uar, aborting\n");
 		goto err_eq_cleanup;
 	}
+	printk("mlx5_alloc_uuars\n");
 
 	err = mlx5_start_eqs(dev);
 	if (err) {
 		dev_err(&pdev->dev, "Failed to start pages and async EQs\n");
 		goto err_free_uar;
 	}
+	printk("mlx5_start_eqs\n");
 
 	err = alloc_comp_eqs(dev);
 	if (err) {
 		dev_err(&pdev->dev, "Failed to alloc completion EQs\n");
 		goto err_stop_eqs;
 	}
+	printk("alloc_comp_eqs\n");
 
 	if (map_bf_area(dev))
 		dev_err(&pdev->dev, "Failed to map blue flame area\n");
-
+	printk("map_bf_area\n");
+	
 	err = mlx5_irq_set_affinity_hints(dev);
 	if (err) {
 		dev_err(&pdev->dev, "Failed to alloc affinity hint cpumask\n");
 		goto err_unmap_bf_area;
 	}
+	printk("mlx5_irq_set_affinity_hints\n");
 
 	MLX5_INIT_DOORBELL_LOCK(&priv->cq_uar_lock);
 
@@ -1128,6 +1162,8 @@ static int mlx5_load_one(struct mlx5_core_dev *dev, struct mlx5_priv *priv)
 		dev_err(&pdev->dev, "Failed to init flow steering\n");
 		goto err_fs;
 	}
+	printk("mlx5_init_fs\n");	
+
 #ifdef CONFIG_MLX5_CORE_EN
 	err = mlx5_eswitch_init(dev);
 	if (err) {
@@ -1141,6 +1177,7 @@ static int mlx5_load_one(struct mlx5_core_dev *dev, struct mlx5_priv *priv)
 		dev_err(&pdev->dev, "sriov init failed %d\n", err);
 		goto err_sriov;
 	}
+	printk("mlx5_sriov_init\n");
 
 	err = mlx5_register_device(dev);
 	if (err) {
@@ -1155,6 +1192,8 @@ static int mlx5_load_one(struct mlx5_core_dev *dev, struct mlx5_priv *priv)
 	dev->interface_state = MLX5_INTERFACE_STATE_UP;
 out:
 	mutex_unlock(&dev->intf_state_mutex);
+
+	printk("mlx5_load_one done\n");
 
 	return 0;
 
@@ -1374,6 +1413,9 @@ static void remove_one(struct pci_dev *pdev)
 	mlx5_health_cleanup(dev);
 	mlx5_pci_close(dev, priv);
 	pci_set_drvdata(pdev, NULL);
+#ifdef CONFIG_MLX5_CAPI
+	mlx5_capi_cleanup(dev, pdev);
+#endif
 	kfree(dev);
 }
 

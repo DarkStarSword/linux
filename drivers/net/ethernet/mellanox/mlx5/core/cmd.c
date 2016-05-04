@@ -43,6 +43,9 @@
 #include <linux/debugfs.h>
 
 #include "mlx5_core.h"
+#ifdef CONFIG_MLX5_CAPI
+	#include "capi.h"
+#endif
 
 enum {
 	CMD_IF_REV = 5,
@@ -574,6 +577,9 @@ static void dump_command(struct mlx5_core_dev *dev,
 	u32 offset = 0;
 	int dump_len;
 
+	if (op != 0x802)
+		return;
+
 	data_only = !!(mlx5_core_debug_mask & (1 << MLX5_CMD_DATA));
 
 	if (data_only)
@@ -648,18 +654,39 @@ static void cmd_work_handler(struct work_struct *work)
 	memset(lay, 0, sizeof(*lay));
 	memcpy(lay->in, ent->in->first.data, sizeof(lay->in));
 	ent->op = be32_to_cpu(lay->in[0]) >> 16;
-	if (ent->in->next)
+
+	if (ent->in->next) {
+#ifdef CONFIG_MLX5_CAPI
+		if (get_cxl_mode(dev))
+			lay->in_ptr = cpu_to_be64((u64)(ent->in->next->buf));
+		else
+			lay->in_ptr = cpu_to_be64(ent->in->next->dma);
+#else
 		lay->in_ptr = cpu_to_be64(ent->in->next->dma);
+#endif
+	}
 	lay->inlen = cpu_to_be32(ent->in->len);
-	if (ent->out->next)
+	
+	if (ent->out->next) {
+#ifdef CONFIG_MLX5_CAPI
+		if (get_cxl_mode(dev))
+			lay->out_ptr = cpu_to_be64((u64)(ent->out->next->buf));
+		else
+			lay->out_ptr = cpu_to_be64(ent->out->next->dma);
+#else
 		lay->out_ptr = cpu_to_be64(ent->out->next->dma);
+#endif
+	}
 	lay->outlen = cpu_to_be32(ent->out->len);
+	
 	lay->type = MLX5_PCI_CMD_XPORT;
 	lay->token = ent->token;
 	lay->status_own = CMD_OWNER_HW;
 	set_signature(ent, !cmd->checksum_disabled);
 	dump_command(dev, ent, 1);
 	ent->ts1 = ktime_get_ns();
+
+	printk("cmd->mode %d\n", cmd->mode);
 
 	/* ring doorbell after the descriptor is valid */
 	mlx5_core_dbg(dev, "writing 0x%x to command doorbell\n", 1 << ent->idx);
@@ -668,6 +695,7 @@ static void cmd_work_handler(struct work_struct *work)
 	mmiowb();
 	/* if not in polling don't use ent after this point */
 	if (cmd->mode == CMD_MODE_POLLING) {
+		printk("cmd_work_handler polling\n");
 		poll_timeout(ent);
 		/* make sure we read the descriptor after ownership is SW */
 		rmb();
@@ -752,7 +780,7 @@ static u8 *get_status_ptr(struct mlx5_outbox_hdr *out)
  *    1. Callback functions may not sleep
  *    2. page queue commands do not support asynchrous completion
  */
-static int mlx5_cmd_invoke(struct mlx5_core_dev *dev, struct mlx5_cmd_msg *in,
+int mlx5_cmd_invoke(struct mlx5_core_dev *dev, struct mlx5_cmd_msg *in,
 			   struct mlx5_cmd_msg *out, void *uout, int uout_size,
 			   mlx5_cmd_cbk_t callback,
 			   void *context, int page_queue, u8 *status)
@@ -844,7 +872,7 @@ static const struct file_operations fops = {
 	.write	= dbg_write,
 };
 
-static int mlx5_copy_to_msg(struct mlx5_cmd_msg *to, void *from, int size)
+int mlx5_copy_to_msg(struct mlx5_cmd_msg *to, void *from, int size)
 {
 	struct mlx5_cmd_prot_block *block;
 	struct mlx5_cmd_mailbox *next;
@@ -938,11 +966,11 @@ static void free_cmd_box(struct mlx5_core_dev *dev,
 	kfree(mailbox);
 }
 
-static struct mlx5_cmd_msg *mlx5_alloc_cmd_msg(struct mlx5_core_dev *dev,
+struct mlx5_cmd_msg *mlx5_alloc_cmd_msg(struct mlx5_core_dev *dev,
 					       gfp_t flags, int size)
 {
 	struct mlx5_cmd_mailbox *tmp, *head = NULL;
-	struct mlx5_cmd_prot_block *block;
+	struct mlx5_cmd_prot_block *block, *tmpblock;
 	struct mlx5_cmd_msg *msg;
 	int blen;
 	int err;
@@ -966,11 +994,25 @@ static struct mlx5_cmd_msg *mlx5_alloc_cmd_msg(struct mlx5_core_dev *dev,
 
 		block = tmp->buf;
 		tmp->next = head;
+
+#ifdef CONFIG_MLX5_CAPI
+		if (get_cxl_mode(dev))
+			block->next =
+				cpu_to_be64(tmp->next ? (u64)(tmp->next->buf) : 0);
+		else
+			block->next =
+				cpu_to_be64(tmp->next ? tmp->next->dma : 0);
+#else
 		block->next = cpu_to_be64(tmp->next ? tmp->next->dma : 0);
+#endif 	
 		block->block_num = cpu_to_be32(n - i - 1);
 		head = tmp;
 	}
 	msg->next = head;
+	
+	if (msg->next)
+		mlx5_core_dbg(dev, "msg->next->dma %llx\n", msg->next->dma);
+
 	msg->len = size;
 	return msg;
 
@@ -1325,7 +1367,7 @@ static int status_to_err(u8 status)
 	return status ? -1 : 0; /* TBD more meaningful codes */
 }
 
-static struct mlx5_cmd_msg *alloc_msg(struct mlx5_core_dev *dev, int in_size,
+struct mlx5_cmd_msg *alloc_msg(struct mlx5_core_dev *dev, int in_size,
 				      gfp_t gfp)
 {
 	struct mlx5_cmd_msg *msg = ERR_PTR(-ENOMEM);
@@ -1366,7 +1408,7 @@ static int is_manage_pages(struct mlx5_inbox_hdr *in)
 	return be16_to_cpu(in->opcode) == MLX5_CMD_OP_MANAGE_PAGES;
 }
 
-static int cmd_exec(struct mlx5_core_dev *dev, void *in, int in_size, void *out,
+int cmd_exec(struct mlx5_core_dev *dev, void *in, int in_size, void *out,
 		    int out_size, mlx5_cmd_cbk_t callback, void *context)
 {
 	struct mlx5_cmd_msg *inb;
@@ -1376,6 +1418,10 @@ static int cmd_exec(struct mlx5_core_dev *dev, void *in, int in_size, void *out,
 	int err;
 	u8 status = 0;
 	u32 drv_synd;
+
+	//Huy to do: remove these two lines
+	u16 opcode  = MLX5_GET(query_hca_cap_in, in, opcode);
+	mlx5_core_dbg(dev, "opcode = %04X\n", opcode);	
 
 	if (pci_channel_offline(dev->pdev) ||
 	    dev->state == MLX5_DEVICE_STATE_INTERNAL_ERROR) {
@@ -1411,7 +1457,6 @@ static int cmd_exec(struct mlx5_core_dev *dev, void *in, int in_size, void *out,
 	if (err)
 		goto out_out;
 
-	mlx5_core_dbg(dev, "err %d, status %d\n", err, status);
 	if (status) {
 		err = status_to_err(status);
 		goto out_out;
@@ -1427,6 +1472,7 @@ out_out:
 out_in:
 	if (!callback)
 		free_msg(dev, inb);
+
 	return err;
 }
 
@@ -1603,14 +1649,26 @@ int mlx5_cmd_init(struct mlx5_core_dev *dev)
 	sema_init(&cmd->sem, cmd->max_reg_cmds);
 	sema_init(&cmd->pages_sem, 1);
 
+#ifdef CONFIG_MLX5_CAPI
+	if (get_cxl_mode(dev)) {
+		cmd_h = (u32)((u64)(cmd->cmd_buf) >> 32);
+		cmd_l = (u32)((u64)(cmd->cmd_buf));
+	} else {	
+		cmd_h = (u32)((u64)(cmd->dma) >> 32);
+		cmd_l = (u32)(cmd->dma);
+	}
+#else
 	cmd_h = (u32)((u64)(cmd->dma) >> 32);
 	cmd_l = (u32)(cmd->dma);
+#endif
+
 	if (cmd_l & 0xfff) {
 		dev_err(&dev->pdev->dev, "invalid command queue address\n");
 		err = -ENOMEM;
 		goto err_free_page;
 	}
 
+	mlx5_core_dbg(dev, "cmd_h %llx, cmd_l %llx\n", cmd_h, cmd_l);
 	iowrite32be(cmd_h, &dev->iseg->cmdq_addr_h);
 	iowrite32be(cmd_l, &dev->iseg->cmdq_addr_l_sz);
 

@@ -47,7 +47,8 @@ struct mlx5_alloc_uar_mbox_in {
 	struct mlx5_inbox_hdr	hdr;
 #ifdef CONFIG_MLX5_CAPI
 	u8                      rsvd1;
-	__be16                  pe_id;
+	u8                      pe_id_msB;
+	u8                      pe_id_lsB;
 	u8                      rsvd2;
 	u8                      rsvd3[4];
 #else
@@ -87,8 +88,9 @@ int mlx5_cmd_alloc_uar(struct mlx5_core_dev *dev, u32 *uarn)
 	in.hdr.opcode = cpu_to_be16(MLX5_CMD_OP_ALLOC_UAR);
 #ifdef CONFIG_MLX5_CAPI
        if (dev->priv.capi.cxl_mode) {
-	       printk("mlx5_cmd_alloc_uar pe_id %x\n", pe_id);
-               in.pe_id = cpu_to_be16(pe_id);
+		mlx5_core_dbg(dev, "mlx5_cmd_alloc_uar pe_id %x\n", pe_id);
+		in.pe_id_msB = (u8)((pe_id >> 8) & 0xFF);
+		in.pe_id_lsB = (u8)(pe_id & 0xFF);
        }
 #endif
 	err = mlx5_cmd_exec(dev, &in, sizeof(in), &out, sizeof(out));
