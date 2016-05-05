@@ -525,6 +525,8 @@ static void update_ivtes_directed(struct cxl_context *ctx)
 	int r;
 
 	for (r = 0; r < CXL_IRQ_RANGES; r++) {
+		dev_info(&ctx->afu->dev, "Updating IVTEs for pe=%i offset[%i]=%lu range[%i]=%lu\n",
+				ctx->pe, r, ctx->irqs.offset[r], r, ctx->irqs.range[r]);
 		ctx->elem->ivte_offsets[r] = cpu_to_be16(ctx->irqs.offset[r]);
 		ctx->elem->ivte_ranges[r] = cpu_to_be16(ctx->irqs.range[r]);
 	}

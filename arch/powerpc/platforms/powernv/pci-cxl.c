@@ -181,6 +181,8 @@ int pnv_cxl_cx4_setup_msi_irqs(struct pci_dev *pdev, int nvec, int type)
 			msg.address_hi = 0;
 			msg.address_lo = cxl_process_element(ctx) << 16 | afu_irq;
 			msg.data = 0;
+			dev_info(&pdev->dev, "MSIX[%i] PE=%i LISN=%i msg.address_lo=%08x\n",
+					afu_irq, cxl_process_element(ctx), afu_irq, msg.address_lo);
 		}
 
 		irq_set_msi_desc(virq, entry);
