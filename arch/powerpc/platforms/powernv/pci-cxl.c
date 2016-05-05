@@ -179,7 +179,7 @@ int pnv_cxl_cx4_setup_msi_irqs(struct pci_dev *pdev, int nvec, int type)
 			 * interrupts to the XSL instead of over the PCI bus.
 			 */
 			msg.address_hi = 0;
-			msg.address_lo = be32_to_cpu(cxl_process_element(ctx) << 16 | afu_irq);
+			msg.address_lo = cxl_process_element(ctx) << 16 | afu_irq;
 			msg.data = 0;
 		}
 
