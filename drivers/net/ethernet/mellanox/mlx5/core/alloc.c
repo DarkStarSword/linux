@@ -203,8 +203,12 @@ void mlx5_fill_page_array(struct mlx5_buf *buf, __be64 *pas)
 	int i;
 
 	for (i = 0; i < buf->npages; i++) {
+#ifdef CONFIG_MLX5_CAPI
+		//Huy To do: Add dev to check cxl mode
+		addr = (u64)(buf->direct.buf) + (i << buf->page_shift);
+#else
 		addr = buf->direct.map + (i << buf->page_shift);
-
+#endif
 		pas[i] = cpu_to_be64(addr);
 	}
 }
