@@ -833,7 +833,6 @@ void cxl_pci_release_afu(struct device *dev)
 
 /* Expects AFU struct to have recently been zeroed out */
 static int cxl_read_afu_descriptor(struct cxl_afu *afu)
-#if 0
 {
 	u64 val;
 
@@ -842,6 +841,7 @@ static int cxl_read_afu_descriptor(struct cxl_afu *afu)
 	afu->max_procs_virtualised = AFUD_NUM_PROCS(val);
 	afu->crs_num = AFUD_NUM_CRS(val);
 
+#if 0
 	if (AFUD_AFU_DIRECTED(val))
 		afu->modes_supported |= CXL_MODE_DIRECTED;
 	if (AFUD_DEDICATED_PROCESS(val))
@@ -854,6 +854,11 @@ static int cxl_read_afu_descriptor(struct cxl_afu *afu)
 	afu->psa = AFUD_PPPSA_PSA(val);
 	if ((afu->pp_psa = AFUD_PPPSA_PP(val)))
 		afu->native->pp_offset = AFUD_READ_PPPSA_OFF(afu);
+#else /* Hacks for CX4 */
+	afu->modes_supported |= CXL_MODE_DIRECTED;
+	afu->pp_size = 0;
+	afu->psa = 0;
+#endif
 
 	val = AFUD_READ_CR(afu);
 	afu->crs_len = AFUD_CR_LEN(val) * 256;
@@ -877,26 +882,6 @@ static int cxl_read_afu_descriptor(struct cxl_afu *afu)
 
 	return 0;
 }
-#else /* Hacks for CX4 */
-{
-	afu->pp_irqs = 0;
-	afu->max_procs_virtualised = 0xffff;
-	afu->crs_num = 0;
-
-	afu->modes_supported |= CXL_MODE_DIRECTED;
-
-	afu->pp_size = 0;
-	afu->psa = 0;
-
-	afu->crs_len = 0;
-	afu->crs_offset = 0;
-
-	afu->eb_len = 0;
-	afu->eb_offset = 0;
-
-	return 0;
-}
-#endif
 
 static int cxl_afu_descriptor_looks_ok(struct cxl_afu *afu)
 {
