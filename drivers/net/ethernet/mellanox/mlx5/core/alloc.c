@@ -41,6 +41,10 @@
 
 #include "mlx5_core.h"
 
+#ifdef CONFIG_MLX5_CAPI 
+#include "capi.h"
+#endif
+
 /* Handling for queue buffers -- we allocate a bunch of memory and
  * register it in a memory region at HCA virtual address 0.
  */
@@ -196,16 +200,22 @@ void mlx5_db_free(struct mlx5_core_dev *dev, struct mlx5_db *db)
 }
 EXPORT_SYMBOL_GPL(mlx5_db_free);
 
-
+#ifdef CONFIG_MLX5_CAPI
+void mlx5_fill_page_array(struct mlx5_core_dev *mdev,
+			  struct mlx5_buf *buf, __be64 *pas)
+#else
 void mlx5_fill_page_array(struct mlx5_buf *buf, __be64 *pas)
+#endif
 {
 	u64 addr;
 	int i;
 
 	for (i = 0; i < buf->npages; i++) {
 #ifdef CONFIG_MLX5_CAPI
-		//Huy To do: Add dev to check cxl mode
-		addr = (u64)(buf->direct.buf) + (i << buf->page_shift);
+		if (get_cxl_mode(mdev))
+			addr = (u64)(buf->direct.buf) + (i << buf->page_shift);
+		else
+			addr = buf->direct.map + (i << buf->page_shift);
 #else
 		addr = buf->direct.map + (i << buf->page_shift);
 #endif

@@ -372,7 +372,11 @@ int mlx5_create_map_eq(struct mlx5_core_dev *dev, struct mlx5_eq *eq, u8 vecidx,
 	}
 	memset(&out, 0, sizeof(out));
 
+#ifdef CONFIG_MLX5_CAPI
+	mlx5_fill_page_array(dev, &eq->buf, in->pas);
+#else
 	mlx5_fill_page_array(&eq->buf, in->pas);
+#endif
 
 	in->hdr.opcode = cpu_to_be16(MLX5_CMD_OP_CREATE_EQ);
 	in->ctx.log_sz_usr_page = cpu_to_be32(ilog2(eq->nent) << 24 | uar->index);

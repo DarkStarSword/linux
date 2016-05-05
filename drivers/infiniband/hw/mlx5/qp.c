@@ -826,8 +826,11 @@ static int create_kernel_qp(struct mlx5_ib_dev *dev,
 	(*in)->ctx.params1 |= cpu_to_be32(1 << 11);
 	(*in)->ctx.sq_crq_size |= cpu_to_be16(1 << 4);
 
+#ifdef CONFIG_MLX5_CAPI
+	mlx5_fill_page_array(dev->mdev, &qp->buf, (*in)->pas);
+#else
 	mlx5_fill_page_array(&qp->buf, (*in)->pas);
-
+#endif
 	err = mlx5_db_alloc(dev->mdev, &qp->db);
 	if (err) {
 		mlx5_ib_dbg(dev, "err %d\n", err);

@@ -790,7 +790,14 @@ void mlx5_register_debugfs(void);
 void mlx5_unregister_debugfs(void);
 int mlx5_eq_init(struct mlx5_core_dev *dev);
 void mlx5_eq_cleanup(struct mlx5_core_dev *dev);
+
+#ifdef CONFIG_MLX5_CAPI
+void mlx5_fill_page_array(struct mlx5_core_dev *mdev,
+			  struct mlx5_buf *buf, __be64 *pas);
+#else
 void mlx5_fill_page_array(struct mlx5_buf *buf, __be64 *pas);
+#endif
+
 void mlx5_cq_completion(struct mlx5_core_dev *dev, u32 cqn);
 void mlx5_rsc_event(struct mlx5_core_dev *dev, u32 rsn, int event_type);
 #ifdef CONFIG_INFINIBAND_ON_DEMAND_PAGING

@@ -211,7 +211,12 @@ static int create_srq_kernel(struct mlx5_ib_dev *dev, struct mlx5_ib_srq *srq,
 		err = -ENOMEM;
 		goto err_buf;
 	}
+
+#ifdef CONFIG_MLX5_CAPI
+	mlx5_fill_page_array(dev->mdev, &srq->buf, (*in)->pas);
+#else
 	mlx5_fill_page_array(&srq->buf, (*in)->pas);
+#endif
 
 	srq->wrid = kmalloc(srq->msrq.max * sizeof(u64), GFP_KERNEL);
 	if (!srq->wrid) {

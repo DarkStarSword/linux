@@ -970,7 +970,7 @@ struct mlx5_cmd_msg *mlx5_alloc_cmd_msg(struct mlx5_core_dev *dev,
 					       gfp_t flags, int size)
 {
 	struct mlx5_cmd_mailbox *tmp, *head = NULL;
-	struct mlx5_cmd_prot_block *block, *tmpblock;
+	struct mlx5_cmd_prot_block *block;
 	struct mlx5_cmd_msg *msg;
 	int blen;
 	int err;
@@ -1668,7 +1668,7 @@ int mlx5_cmd_init(struct mlx5_core_dev *dev)
 		goto err_free_page;
 	}
 
-	mlx5_core_dbg(dev, "cmd_h %llx, cmd_l %llx\n", cmd_h, cmd_l);
+	mlx5_core_dbg(dev, "cmd_h %x, cmd_l %x\n", cmd_h, cmd_l);
 	iowrite32be(cmd_h, &dev->iseg->cmdq_addr_h);
 	iowrite32be(cmd_l, &dev->iseg->cmdq_addr_l_sz);
 

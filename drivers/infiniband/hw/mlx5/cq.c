@@ -736,8 +736,11 @@ static int create_cq_kernel(struct mlx5_ib_dev *dev, struct mlx5_ib_cq *cq,
 		err = -ENOMEM;
 		goto err_buf;
 	}
+#ifdef CONFIG_MLX5_CAPI
+	mlx5_fill_page_array(dev->mdev, &cq->buf.buf, (*cqb)->pas);
+#else
 	mlx5_fill_page_array(&cq->buf.buf, (*cqb)->pas);
-
+#endif
 	(*cqb)->ctx.log_pg_sz = cq->buf.buf.page_shift - MLX5_ADAPTER_PAGE_SHIFT;
 	*index = dev->mdev->priv.uuari.uars[0].index;
 
@@ -1149,9 +1152,13 @@ int mlx5_ib_resize_cq(struct ib_cq *ibcq, int entries, struct ib_udata *udata)
 	if (udata)
 		mlx5_ib_populate_pas(dev, cq->resize_umem, page_shift,
 				     in->pas, 0);
-	else
+	else {
+#ifdef CONFIG_MLX5_CAPI
+		mlx5_fill_page_array(dev->mdev, &cq->resize_buf->buf, in->pas);
+#else	
 		mlx5_fill_page_array(&cq->resize_buf->buf, in->pas);
-
+#endif
+	}
 	in->field_select = cpu_to_be32(MLX5_MODIFY_CQ_MASK_LOG_SIZE  |
 				       MLX5_MODIFY_CQ_MASK_PG_OFFSET |
 				       MLX5_MODIFY_CQ_MASK_PG_SIZE);
