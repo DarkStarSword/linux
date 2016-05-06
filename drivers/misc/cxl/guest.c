@@ -613,10 +613,12 @@ out_free:
 	return rc;
 }
 
-static int guest_attach_process(struct cxl_context *ctx, bool kernel,
-				bool real_mode, u64 wed, u64 amr)
+static int guest_attach_process(struct cxl_context *ctx, bool kernel, u64 wed, u64 amr)
 {
 	pr_devel("in %s\n", __func__);
+
+	if (ctx->real_mode)
+		return -EPERM;
 
 	ctx->kernel = kernel;
 	if (ctx->afu->current_mode == CXL_MODE_DIRECTED)

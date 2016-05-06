@@ -497,7 +497,7 @@ err:
 #define set_endian(sr) ((sr) &= ~(CXL_PSL_SR_An_LE))
 #endif
 
-static u64 calculate_sr(struct cxl_context *ctx, bool real_mode)
+static u64 calculate_sr(struct cxl_context *ctx)
 {
 	u64 sr = 0;
 
@@ -507,10 +507,9 @@ static u64 calculate_sr(struct cxl_context *ctx, bool real_mode)
 	if (mfspr(SPRN_LPCR) & LPCR_TC)
 		sr |= CXL_PSL_SR_An_TC;
 	if (ctx->kernel) {
-		if (!real_mode)
+		if (!ctx->real_mode)
 			sr |= CXL_PSL_SR_An_R;
-		sr |= (mfmsr() & MSR_SF);
-		sr |= CXL_PSL_SR_An_HV;
+		sr |= (mfmsr() & MSR_SF) | CXL_PSL_SR_An_HV;
 	} else {
 		sr |= CXL_PSL_SR_An_PR | CXL_PSL_SR_An_R;
 		sr &= ~(CXL_PSL_SR_An_HV);
@@ -535,7 +534,7 @@ static void update_ivtes_directed(struct cxl_context *ctx)
 		WARN_ON(update_process_element(ctx));
 }
 
-static int attach_afu_directed(struct cxl_context *ctx, bool real_mode, u64 wed, u64 amr)
+static int attach_afu_directed(struct cxl_context *ctx, u64 wed, u64 amr)
 {
 	u32 pid;
 	int result;
@@ -553,7 +552,7 @@ static int attach_afu_directed(struct cxl_context *ctx, bool real_mode, u64 wed,
 	ctx->elem->common.tid = 0;
 	ctx->elem->common.pid = cpu_to_be32(pid);
 
-	ctx->elem->sr = cpu_to_be64(calculate_sr(ctx, real_mode));
+	ctx->elem->sr = cpu_to_be64(calculate_sr(ctx));
 
 	ctx->elem->common.csrp = 0; /* disable */
 	ctx->elem->common.aurp0 = 0; /* disable */
@@ -641,7 +640,7 @@ static void update_ivtes_dedicated(struct cxl_context *ctx)
 			((u64)ctx->irqs.range[3] & 0xffff));
 }
 
-static int attach_dedicated(struct cxl_context *ctx, bool real_mode, u64 wed, u64 amr)
+static int attach_dedicated(struct cxl_context *ctx, u64 wed, u64 amr)
 {
 	struct cxl_afu *afu = ctx->afu;
 	u64 pid;
@@ -652,7 +651,7 @@ static int attach_dedicated(struct cxl_context *ctx, bool real_mode, u64 wed, u6
 		pid = 0;
 	cxl_p2n_write(afu, CXL_PSL_PID_TID_An, pid);
 
-	cxl_p1n_write(afu, CXL_PSL_SR_An, calculate_sr(ctx, real_mode));
+	cxl_p1n_write(afu, CXL_PSL_SR_An, calculate_sr(ctx));
 
 	if ((rc = cxl_write_sstp(afu, ctx->sstp0, ctx->sstp1)))
 		return rc;
@@ -716,7 +715,7 @@ static int native_afu_activate_mode(struct cxl_afu *afu, int mode)
 }
 
 static int native_attach_process(struct cxl_context *ctx, bool kernel,
-				bool real_mode, u64 wed, u64 amr)
+				u64 wed, u64 amr)
 {
 	if (!cxl_ops->link_ok(ctx->afu->adapter, ctx->afu)) {
 		WARN(1, "Device link is down, refusing to attach process!\n");
@@ -725,10 +724,10 @@ static int native_attach_process(struct cxl_context *ctx, bool kernel,
 
 	ctx->kernel = kernel;
 	if (ctx->afu->current_mode == CXL_MODE_DIRECTED)
-		return attach_afu_directed(ctx, real_mode, wed, amr);
+		return attach_afu_directed(ctx, wed, amr);
 
 	if (ctx->afu->current_mode == CXL_MODE_DEDICATED)
-		return attach_dedicated(ctx, real_mode, wed, amr);
+		return attach_dedicated(ctx, wed, amr);
 
 	return -EINVAL;
 }

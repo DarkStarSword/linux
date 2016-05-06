@@ -517,6 +517,7 @@ struct cxl_context {
 	bool pe_inserted;
 	bool master;
 	bool kernel;
+	bool real_mode;
 	bool pending_irq;
 	bool pending_fault;
 	bool pending_afu_err;
@@ -884,7 +885,7 @@ struct cxl_backend_ops {
 	irqreturn_t (*psl_interrupt)(int irq, void *data);
 	int (*ack_irq)(struct cxl_context *ctx, u64 tfc, u64 psl_reset_mask);
 	int (*attach_process)(struct cxl_context *ctx, bool kernel,
-			bool real_mode, u64 wed, u64 amr);
+			u64 wed, u64 amr);
 	int (*detach_process)(struct cxl_context *ctx);
 	void (*update_ivtes)(struct cxl_context *ctx);
 	bool (*support_attributes)(const char *attr_name, enum cxl_attrs type);
