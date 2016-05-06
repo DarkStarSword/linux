@@ -142,14 +142,6 @@ irq_hw_number_t cxl_afu_irq_to_hwirq(struct cxl_context *ctx, int num);
  */
 int cxl_start_context(struct cxl_context *ctx, u64 wed,
 		      struct task_struct *task);
-
-/*
- * Variant of cxl_start_context that allows the context to operate with
- * translation disabled. Note that this only makes sense for kernel contexts
- * under bare metal, and will not work with virtualisation.
- */
-int cxl_start_context2(struct cxl_context *ctx, u64 wed,
-		      struct task_struct *task, bool real_mode);
 /*
  * Stop a context and remove it from the PSL
  */
@@ -164,6 +156,14 @@ int cxl_afu_reset(struct cxl_context *ctx);
  * than just the per context area (for slaves).
  */
 void cxl_set_master(struct cxl_context *ctx);
+
+/*
+ * Sets the context to use real mode memory accesses to operate with
+ * translation disabled. Note that this only makes sense for kernel contexts
+ * under bare metal, and will not work with virtualisation. May only be
+ * performed on stopped contexts.
+ */
+int cxl_set_translation_mode(struct cxl_context *ctx, bool real_mode);
 
 /*
  * Map and unmap the AFU Problem Space area. The amount and location mapped
