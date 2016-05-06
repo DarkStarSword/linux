@@ -100,7 +100,8 @@ int mlx5_capi_setup(struct mlx5_core_dev *dev, struct pci_dev *pdev)
 		goto out;
 	}
 	capi->direct_pe = cxl_process_element(capi_context);
-	cxl_start_context2(capi_context, 0, NULL, true);
+	cxl_set_translation_mode(capi_context, true);
+	cxl_start_context(capi_context, 0, NULL);
 	capi->direct_ctx = capi_context;
 
 	/* Default PE */
