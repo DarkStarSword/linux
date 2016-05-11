@@ -431,18 +431,6 @@ static int remove_process_element(struct cxl_context *ctx)
 	return rc;
 }
 
-static int update_process_element(struct cxl_context *ctx)
-{
-	int rc = 0;
-
-	mutex_lock(&ctx->afu->native->spa_mutex);
-	pr_devel("%s Updating pe: %i started\n", __func__, ctx->pe);
-	rc = do_process_element_cmd(ctx, CXL_SPA_SW_CMD_UPDATE, CXL_PE_SOFTWARE_STATE_V);
-	pr_devel("%s Updating pe: %i finished\n", __func__, ctx->pe);
-	mutex_unlock(&ctx->afu->native->spa_mutex);
-	return rc;
-}
-
 void cxl_assign_psn_space(struct cxl_context *ctx)
 {
 	if (!ctx->afu->pp_size || ctx->master) {
@@ -521,7 +509,13 @@ static u64 calculate_sr(struct cxl_context *ctx)
 
 static void update_ivtes_directed(struct cxl_context *ctx)
 {
+	bool need_update = (ctx->status == STARTED);
 	int r;
+
+	if (need_update) {
+		WARN_ON(terminate_process_element(ctx));
+		WARN_ON(remove_process_element(ctx));
+	}
 
 	for (r = 0; r < CXL_IRQ_RANGES; r++) {
 		dev_info(&ctx->afu->dev, "Updating IVTEs for pe=%i offset[%i]=%lu range[%i]=%lu\n",
@@ -530,8 +524,18 @@ static void update_ivtes_directed(struct cxl_context *ctx)
 		ctx->elem->ivte_ranges[r] = cpu_to_be16(ctx->irqs.range[r]);
 	}
 
-	if (ctx->status == STARTED)
-		WARN_ON(update_process_element(ctx));
+	/*
+	 * Theoretically we could use the update llcmd, instead of a
+	 * terminate/remove/add (or if an atomic update was required we could
+	 * do a suspend/update/resume), however it seems there might be issues
+	 * with the update llcmd on some cards (including those using an XSL on
+	 * an ASIC) so for now it's safest to go with the commands that are
+	 * known to work. In the future if we come across a situation where the
+	 * card may be performing transactions using the same PE while we are
+	 * doing this update we might need to revisit this.
+	 */
+	if (need_update)
+		WARN_ON(add_process_element(ctx));
 }
 
 static int attach_afu_directed(struct cxl_context *ctx, u64 wed, u64 amr)
