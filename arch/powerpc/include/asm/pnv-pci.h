@@ -23,7 +23,7 @@ struct device_node *pnv_pci_get_phb_node(struct pci_dev *dev);
 
 #ifdef CONFIG_CXL_BASE
 int pnv_cxl_alloc_hwirq_ranges(struct cxl_irq_ranges *irqs,
-			       struct pci_dev *dev, int num);
+			       struct pci_dev *dev, int num, int first_range);
 void pnv_cxl_release_hwirq_ranges(struct cxl_irq_ranges *irqs,
 				  struct pci_dev *dev);
 

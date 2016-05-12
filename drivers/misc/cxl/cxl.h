@@ -537,6 +537,7 @@ struct cxl_service_layer_ops {
 	void (*debugfs_stop_trace)(struct cxl *adapter);
 	void (*write_timebase_ctrl)(struct cxl *adapter);
 	u64 (*timebase_read)(struct cxl *adapter);
+	int ivte_ranges;
 };
 
 struct cxl_native {
@@ -697,6 +698,20 @@ static inline u64 cxl_p2n_read(struct cxl_afu *afu, cxl_p2n_reg_t reg)
 		return in_be64(_cxl_p2n_addr(afu, reg));
 	else
 		return ~0ULL;
+}
+
+static inline bool cxl_supports_multiplexed_psl_irq(struct cxl *adapter) {
+	if (!cpu_has_feature(CPU_FTR_HVMODE))
+		return false;
+
+	return (adapter->native->sl_ops->ivte_ranges >= 2);
+}
+
+static inline int cxl_afu_irq_range_start(struct cxl *adapter)
+{
+	if (cxl_supports_multiplexed_psl_irq(adapter))
+		return 1;
+	return 0;
 }
 
 ssize_t cxl_pci_afu_read_err_buffer(struct cxl_afu *afu, char *buf,

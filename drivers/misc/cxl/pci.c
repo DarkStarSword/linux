@@ -568,7 +568,7 @@ int cxl_pci_alloc_irq_ranges(struct cxl_irq_ranges *irqs,
 {
 	struct pci_dev *dev = to_pci_dev(adapter->dev.parent);
 
-	return pnv_cxl_alloc_hwirq_ranges(irqs, dev, num);
+	return pnv_cxl_alloc_hwirq_ranges(irqs, dev, num, cxl_afu_irq_range_start(adapter));
 }
 
 void cxl_pci_release_irq_ranges(struct cxl_irq_ranges *irqs,
@@ -1451,10 +1451,12 @@ static const struct cxl_service_layer_ops psl_ops = {
 	.debugfs_stop_trace = cxl_stop_trace,
 	.write_timebase_ctrl = write_timebase_ctrl_psl,
 	.timebase_read = timebase_read_psl,
+	.ivte_ranges = 4,
 };
 
 static const struct cxl_service_layer_ops xsl_ops = {
 	.adapter_regs_init = init_implementation_adapter_xsl_regs,
+	.ivte_ranges = 1,
 };
 
 static void set_sl_ops(struct cxl *adapter, struct pci_dev *dev)

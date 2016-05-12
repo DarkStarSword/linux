@@ -2671,7 +2671,7 @@ void pnv_cxl_release_hwirq_ranges(struct cxl_irq_ranges *irqs,
 EXPORT_SYMBOL(pnv_cxl_release_hwirq_ranges);
 
 int pnv_cxl_alloc_hwirq_ranges(struct cxl_irq_ranges *irqs,
-			       struct pci_dev *dev, int num)
+			       struct pci_dev *dev, int num, int first_range)
 {
 	struct pci_controller *hose = pci_bus_to_host(dev->bus);
 	struct pnv_phb *phb = hose->private_data;
@@ -2680,7 +2680,7 @@ int pnv_cxl_alloc_hwirq_ranges(struct cxl_irq_ranges *irqs,
 	memset(irqs, 0, sizeof(struct cxl_irq_ranges));
 
 	/* 0 is reserved for the multiplexed PSL DSI interrupt */
-	for (i = 1; i < CXL_IRQ_RANGES && num; i++) {
+	for (i = first_range; i < CXL_IRQ_RANGES && num; i++) {
 		try = num;
 		while (try) {
 			hwirq = msi_bitmap_alloc_hwirqs(&phb->msi_bmp, try);

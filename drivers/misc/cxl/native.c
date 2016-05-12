@@ -873,6 +873,22 @@ static irqreturn_t native_irq_multiplexed(int irq, void *data)
 	return fail_psl_irq(afu, &irq_info);
 }
 
+static irqreturn_t native_irq_no_multiplexed(int irq, void *data)
+{
+	struct cxl_context *ctx = data;
+	struct cxl_irq_info irq_info;
+	int rc;
+
+	pr_devel("%d: received PSL interrupt %i\n", ctx->pe, irq);
+	rc = native_get_irq_info(ctx->afu, &irq_info);
+	if (rc) {
+		WARN(1, "Unable to get CXL IRQ Info: %i\n", rc);
+		return fail_psl_irq(ctx->afu, &irq_info);
+	}
+
+	return cxl_irq(irq, ctx, &irq_info);
+}
+
 static irqreturn_t native_slice_irq_err(int irq, void *data)
 {
 	struct cxl_afu *afu = data;
@@ -1002,6 +1018,11 @@ int cxl_native_register_psl_irq(struct cxl_afu *afu)
 {
 	int rc;
 
+#if 0 // Would need to fix up no AFU irq case, but that doesn't matter for us
+	if (!cxl_supports_multiplexed_psl_irq(afu->adapter))
+		return 0;
+#endif
+
 	afu->psl_irq_name = kasprintf(GFP_KERNEL, "cxl-%s",
 				      dev_name(&afu->dev));
 	if (!afu->psl_irq_name)
@@ -1018,6 +1039,11 @@ int cxl_native_register_psl_irq(struct cxl_afu *afu)
 
 void cxl_native_release_psl_irq(struct cxl_afu *afu)
 {
+#if 0 // Would need to fix up no AFU irq case, but that doesn't matter for us
+	if (!cxl_supports_multiplexed_psl_irq(afu->adapter))
+		return;
+#endif
+
 	if (afu->native->psl_virq != irq_find_mapping(NULL, afu->native->psl_hwirq))
 		return;
 
@@ -1163,7 +1189,7 @@ const struct cxl_backend_ops cxl_native_ops = {
 	.release_irq_ranges = cxl_pci_release_irq_ranges,
 	.setup_irq = cxl_pci_setup_irq,
 	.handle_psl_slice_error = native_handle_psl_slice_error,
-	.psl_interrupt = NULL,
+	.psl_interrupt = native_irq_no_multiplexed,
 	.ack_irq = native_ack_irq,
 	.attach_process = native_attach_process,
 	.detach_process = native_detach_process,
