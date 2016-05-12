@@ -82,7 +82,7 @@ enum {
 
 enum {
 	MLX5_EQ_VEC_PAGES	 = 0,
-	MLX5_EQ_VEC_CMD		 = 1,
+	MLX5_EQ_VEC_CMD		 = 7,
 	MLX5_EQ_VEC_ASYNC	 = 2,
 	MLX5_EQ_VEC_COMP_BASE,
 };
