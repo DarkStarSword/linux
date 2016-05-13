@@ -7,6 +7,8 @@
  * 2 of the License, or (at your option) any later version.
  */
 
+#define DEBUG
+
 #include <linux/spinlock.h>
 #include <linux/sched.h>
 #include <linux/slab.h>
@@ -19,8 +21,6 @@
 
 #include "cxl.h"
 #include "trace.h"
-
-#define DEBUG
 
 static int afu_control(struct cxl_afu *afu, u64 command,
 		       u64 result, u64 mask, bool enabled)

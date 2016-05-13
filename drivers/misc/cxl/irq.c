@@ -7,6 +7,8 @@
  * 2 of the License, or (at your option) any later version.
  */
 
+#define DEBUG
+
 #include <linux/interrupt.h>
 #include <linux/workqueue.h>
 #include <linux/sched.h>
