@@ -177,18 +177,15 @@ int pnv_cxl_cx4_setup_msi_irqs(struct pci_dev *pdev, int nvec, int type)
 			 * This is a quirk specific to the CX4 card while in
 			 * cxl mode, which uses the MSI-X table to route
 			 * interrupts to the XSL instead of over the PCI bus.
+			 *
+			 * Using an unconditional swab32 here as
+			 * pci_write_msi_msg will write these values as
+			 * little-endian, but the card expects these to be in
+			 * big-endian.
 			 */
 			msg.address_hi = 0;
 			msg.address_lo = 0;
-			/*
-			 * Checkme: is cpu_to_be32 right? Works on LE, but
-			 * doesn't pci_write_msi_msg already do a byte swap to
-			 * LE?
-			 *
-			 * LE: Starts as LE -> Swap -> no swap = BE, correct
-			 * BE: Starts as BE -> no swap -> swap = LE, wrong?
-			 */
-			msg.data = cpu_to_be32((afu_irq << 28) | cxl_process_element(ctx));
+			msg.data = swab32((afu_irq << 28) | cxl_process_element(ctx));
 			dev_info(&pdev->dev, "MSIX[%i] PE=%i LISN=%i msg.address_lo=%08x\n",
 					afu_irq, cxl_process_element(ctx), afu_irq, msg.address_lo);
 		}
