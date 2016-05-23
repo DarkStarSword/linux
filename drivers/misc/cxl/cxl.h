@@ -93,6 +93,8 @@ static const cxl_p1_reg_t CXL_PSL_DSNDCTL   = {0x0150};
 static const cxl_p1_reg_t CXL_PSL_SNWRALLOC = {0x0158};
 static const cxl_p1_reg_t CXL_PSL_TRACE     = {0x0170};
 /* XSL registers (Mellanox CX4) */
+static const cxl_p1_reg_t CXL_XSL_Timebase  = {0x0100};
+static const cxl_p1_reg_t CXL_XSL_TB_CTLSTAT = {0x0108};
 static const cxl_p1_reg_t CXL_XSL_DSNCTL    = {0x0168};
 /* 0x7F00:7FFF Reserved PCIe MSI-X Pending Bit Array area */
 /* 0x8000:FFFF Reserved PCIe MSI-X Table Area */
