@@ -45,7 +45,7 @@
 #include <linux/mlx5/transobj.h>
 
 #define mlx5_ib_dbg(dev, format, arg...)				\
-pr_debug("%s:%s:%d:(pid %d): " format, (dev)->ib_dev.name, __func__,	\
+pr_err("%s:%s:%d:(pid %d): " format, (dev)->ib_dev.name, __func__,	\
 	 __LINE__, current->pid, ##arg)
 
 #define mlx5_ib_err(dev, format, arg...)				\
@@ -115,7 +115,10 @@ struct mlx5_ib_ucontext {
 	u32			tdn;
 #ifdef CONFIG_MLX5_CAPI
 	struct cxl_context     *ctx;
-	int                     pe;	
+	int                     pe;
+
+	struct cxl_context     *ctx2;
+	int                     pe2;	
 #endif
 };
 
@@ -806,8 +809,10 @@ static inline int verify_assign_uidx(u8 cqe_version, u32 cmd_uidx,
 
 #ifdef CONFIG_MLX5_CAPI
 int mlx5_capi_get_default_pe_id(struct ib_pd *pd);
+int mlx5_capi_get_pe_id2(struct ib_ucontext *ibcontext);
 int mlx5_capi_get_pe_id(struct ib_ucontext *ibcontext);
 int mlx5_capi_allocate_cxl_context(struct ib_ucontext *ibcontext,
 				   struct mlx5_ib_dev *dev);
+int mlx5_capi_release_cxl_context(struct ib_ucontext *ibcontext);
 #endif
 #endif /* MLX5_IB_H */

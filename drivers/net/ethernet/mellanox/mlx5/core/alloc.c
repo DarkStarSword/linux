@@ -141,7 +141,10 @@ static int mlx5_alloc_db_from_pgdir(struct mlx5_db_pgdir *pgdir,
 	offset = db->index * L1_CACHE_BYTES;
 	db->db      = pgdir->db_page + offset / sizeof(*pgdir->db_page);
 	db->dma     = pgdir->db_dma  + offset;
-
+#ifdef CONFIG_MLX5_CAPI
+	db->virt_addr = (u64)(db->db);
+	printk(KERN_ALERT "map kernel doorbell at 0x%llx\n", db->virt_addr);
+#endif
 	db->db[0] = 0;
 	db->db[1] = 0;
 

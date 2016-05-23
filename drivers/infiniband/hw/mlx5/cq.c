@@ -824,8 +824,14 @@ struct ib_cq *mlx5_ib_create_cq(struct ib_device *ibdev,
 		goto err_cqb;
 
 	cqb->ctx.c_eqn = cpu_to_be16(eqn);
+#ifdef CONFIG_MLX5_CAPI
+	if (get_cxl_mode(dev->mdev))
+		cqb->ctx.db_record_addr = cpu_to_be64(cq->db.virt_addr);
+	else
+		cqb->ctx.db_record_addr = cpu_to_be64(cq->db.dma);	
+#else
 	cqb->ctx.db_record_addr = cpu_to_be64(cq->db.dma);
-
+#endif
 	err = mlx5_core_create_cq(dev->mdev, &cq->mcq, cqb, inlen);
 	if (err)
 		goto err_cqb;

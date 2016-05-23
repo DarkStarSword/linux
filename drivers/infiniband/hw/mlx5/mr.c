@@ -782,6 +782,7 @@ static struct mlx5_ib_mr *reg_umr(struct ib_pd *pd, struct ib_umem *umem,
 	int err = 0;
 	int i;
 
+	mlx5_ib_dbg(dev, "reg_umr\n");
 	for (i = 0; i < 1; i++) {
 		mr = alloc_cached_mr(dev, order);
 		if (mr)
@@ -810,8 +811,8 @@ static struct mlx5_ib_mr *reg_umr(struct ib_pd *pd, struct ib_umem *umem,
 	pas = PTR_ALIGN(mr_pas, MLX5_UMR_ALIGN);
 	mlx5_ib_populate_pas(dev, umem, page_shift, pas, MLX5_IB_MTT_PRESENT);
 	/* Clear padding after the actual pages. */
-	memset(pas + npages, 0, size - npages * sizeof(u64));
 
+	memset(pas + npages, 0, size - npages * sizeof(u64));
 	dma = dma_map_single(ddev, pas, size, DMA_TO_DEVICE);
 	if (dma_mapping_error(ddev, dma)) {
 		err = -ENOMEM;
@@ -993,6 +994,7 @@ static struct mlx5_ib_mr *reg_create(struct ib_pd *pd, u64 virt_addr,
 	int err;
 	bool pg_cap = !!(MLX5_CAP_GEN(dev->mdev, pg));
 
+	mlx5_ib_dbg(dev, "reg_create\n");
 	mr = kzalloc(sizeof(*mr), GFP_KERNEL);
 	if (!mr)
 		return ERR_PTR(-ENOMEM);
@@ -1005,7 +1007,6 @@ static struct mlx5_ib_mr *reg_create(struct ib_pd *pd, u64 virt_addr,
 	}
 	mlx5_ib_populate_pas(dev, umem, page_shift, in->pas,
 			     pg_cap ? MLX5_IB_MTT_PRESENT : 0);
-
 	/* The MLX5_MKEY_INBOX_PG_ACCESS bit allows setting the access flags
 	 * in the page list submitted with the command. */
 	in->flags = pg_cap ? cpu_to_be32(MLX5_MKEY_INBOX_PG_ACCESS) : 0;
@@ -1023,7 +1024,7 @@ static struct mlx5_ib_mr *reg_create(struct ib_pd *pd, u64 virt_addr,
 
 #ifdef CONFIG_MLX5_CAPI
 	in->seg.pe_id =
-		cpu_to_be16(mlx5_capi_get_pe_id(pd->uobject->context));
+		cpu_to_be16(mlx5_capi_get_pe_id2(pd->uobject->context));
 #endif
 
 	err = mlx5_core_create_mkey(dev->mdev, &mr->mmr, in, inlen, NULL,
@@ -1082,6 +1083,8 @@ struct ib_mr *mlx5_ib_reg_user_mr(struct ib_pd *pd, u64 start, u64 length,
 	mlx5_ib_dbg(dev, "npages %d, ncont %d, order %d, page_shift %d\n",
 		    npages, ncont, order, page_shift);
 
+	/* Huy temporarily disable umr */
+#ifndef CONFIG_MLX5_CAPI
 	if (use_umr(order)) {
 		mr = reg_umr(pd, umem, virt_addr, length, ncont, page_shift,
 			     order, access_flags);
@@ -1094,6 +1097,7 @@ struct ib_mr *mlx5_ib_reg_user_mr(struct ib_pd *pd, u64 start, u64 length,
 		pr_err("Got MR registration for ODP MR > 512MB, not supported for Connect-IB");
 		goto error;
 	}
+#endif
 
 	if (!mr)
 		mr = reg_create(pd, virt_addr, length, umem, ncont, page_shift,
@@ -1377,7 +1381,7 @@ struct ib_mr *mlx5_ib_alloc_mr(struct ib_pd *pd,
 	in->seg.flags = MLX5_PERM_UMR_EN | access_mode;
 #ifdef CONFIG_MLX5_CAPI
 	in->seg.pe_id =
-		cpu_to_be16(mlx5_capi_get_pe_id(pd->uobject->context));
+		cpu_to_be16(mlx5_capi_get_pe_id2(pd->uobject->context));
 #endif
 	err = mlx5_core_create_mkey(dev->mdev, &mr->mmr, in, sizeof(*in),
 				    NULL, NULL, NULL);

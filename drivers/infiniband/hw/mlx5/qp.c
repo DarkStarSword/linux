@@ -1379,7 +1379,14 @@ static int create_qp_common(struct mlx5_ib_dev *dev, struct ib_pd *pd,
 	if (init_attr->recv_cq)
 		in->ctx.cqn_recv = cpu_to_be32(to_mcq(init_attr->recv_cq)->mcq.cqn);
 
+#ifdef CONFIG_MLX5_CAPI
+	if (get_cxl_mode(mdev))
+		in->ctx.db_rec_addr = cpu_to_be64(qp->db.virt_addr);
+	else
+		in->ctx.db_rec_addr = cpu_to_be64(qp->db.dma);
+#else
 	in->ctx.db_rec_addr = cpu_to_be64(qp->db.dma);
+#endif
 
 	if (MLX5_CAP_GEN(mdev, cqe_version) == MLX5_CQE_VERSION_V1) {
 		qpc = MLX5_ADDR_OF(create_qp_in, in, qpc);
@@ -2273,8 +2280,16 @@ static int __mlx5_ib_modify_qp(struct ib_qp *ibqp,
 	if (attr_mask & IB_QP_QKEY)
 		context->qkey = cpu_to_be32(attr->qkey);
 
-	if (qp->rq.wqe_cnt && cur_state == IB_QPS_RESET && new_state == IB_QPS_INIT)
+	if (qp->rq.wqe_cnt && cur_state == IB_QPS_RESET && new_state == IB_QPS_INIT) {
+#ifdef CONFIG_MLX5_CAPI
+		if (get_cxl_mode(dev->mdev))
+			context->db_rec_addr = cpu_to_be64(qp->db.virt_addr);
+		else
+			context->db_rec_addr = cpu_to_be64(qp->db.dma);
+#else
 		context->db_rec_addr = cpu_to_be64(qp->db.dma);
+#endif
+	}
 
 	if (cur_state == IB_QPS_RTS && new_state == IB_QPS_SQD	&&
 	    attr_mask & IB_QP_EN_SQD_ASYNC_NOTIFY && attr->en_sqd_async_notify)
@@ -2456,6 +2471,8 @@ static void set_data_ptr_seg(struct mlx5_wqe_data_seg *dseg, struct ib_sge *sg)
 	dseg->byte_count = cpu_to_be32(sg->length);
 	dseg->lkey       = cpu_to_be32(sg->lkey);
 	dseg->addr       = cpu_to_be64(sg->addr);
+
+	printk(KERN_ALERT "data seg address 0x%llx\n", sg->addr);
 }
 
 static __be16 get_klm_octo(int npages)
@@ -2580,6 +2597,9 @@ static void set_reg_umr_segment(struct mlx5_wqe_umr_ctrl_seg *umr,
 		} else {
 			umr->mkey_mask = get_umr_reg_mr_mask();
 		}
+#ifdef CONFIG_MLX5_CAPI
+		umr->mkey_mask |= MLX5_MKEY_MASK_PEID;		
+#endif
 	} else {
 		umr->mkey_mask = get_umr_unreg_mr_mask();
 	}
@@ -2638,6 +2658,11 @@ static void set_reg_mkey_segment(struct mlx5_mkey_seg *seg, struct ib_send_wr *w
 	seg->log2_page_size = umrwr->page_shift;
 	seg->qpn_mkey7_0 = cpu_to_be32(0xffffff00 |
 				       mlx5_mkey_variant(umrwr->mkey));
+
+#ifdef CONFIG_MLX5_CAPI
+	seg->pe_id =
+		cpu_to_be16(mlx5_capi_get_pe_id(umrwr->pd->uobject->context));
+#endif
 }
 
 static void set_reg_data_seg(struct mlx5_wqe_data_seg *dseg,

@@ -47,6 +47,9 @@
 
 #ifdef CONFIG_MLX5_CAPI
 #include <misc/cxl.h>
+
+/* Get cxl mode from mlx5_core_dev */
+#define get_cxl_mode(dev) (dev->priv.capi.cxl_mode)
 #endif
 
 enum {
@@ -580,6 +583,7 @@ struct mlx5_db {
 	}			u;
 	dma_addr_t		dma;
 	int			index;
+	u64			virt_addr; 
 };
 
 enum {

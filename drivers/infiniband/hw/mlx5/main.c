@@ -1033,6 +1033,10 @@ static int mlx5_ib_dealloc_ucontext(struct ib_ucontext *ibcontext)
 			mlx5_ib_warn(dev, "failed to free UAR 0x%x\n", uuari->uars[i].index);
 	}
 
+#ifdef CONFIG_MLX5_CAPI
+	mlx5_capi_release_cxl_context(&context->ibucontext);
+#endif
+
 	kfree(uuari->count);
 	kfree(uuari->bitmap);
 	kfree(uuari->uars);
