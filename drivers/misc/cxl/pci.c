@@ -1387,7 +1387,7 @@ static int cxl_configure_adapter(struct cxl *adapter, struct pci_dev *dev)
 	if ((rc = adapter->native->sl_ops->adapter_regs_init(adapter, dev)))
 		goto err;
 
-	if ((rc = pnv_phb_to_cxl_mode(dev, OPAL_PHB_CAPI_MODE_CAPI)))
+	if ((rc = pnv_phb_to_cxl_mode(dev, adapter->native->sl_ops->capi_mode)))
 		goto err;
 
 	/* If recovery happened, the last step is to turn on snooping.
@@ -1432,11 +1432,13 @@ static const struct cxl_service_layer_ops psl_ops = {
 	.write_timebase_ctrl = write_timebase_ctrl_psl,
 	.timebase_read = timebase_read_psl,
 	.ivte_ranges = 4,
+	.capi_mode = OPAL_PHB_CAPI_MODE_CAPI,
 };
 
 static const struct cxl_service_layer_ops xsl_ops = {
 	.adapter_regs_init = init_implementation_adapter_xsl_regs,
 	.ivte_ranges = 1,
+	.capi_mode = OPAL_PHB_CAPI_MODE_DMA,
 };
 
 static void set_sl_ops(struct cxl *adapter, struct pci_dev *dev)
