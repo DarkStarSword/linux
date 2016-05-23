@@ -1381,45 +1381,25 @@ static int cxl_configure_adapter(struct cxl *adapter, struct pci_dev *dev)
 	if ((rc = cxl_map_adapter_regs(adapter, dev)))
 		return rc;
 
-	dev_err(&dev->dev, "Before sanitise_adapter_regs\n");
-
 	if ((rc = sanitise_adapter_regs(adapter)))
 		goto err;
-
-	dev_err(&dev->dev, "\n\n\nsanitise_adapter_regs completed!\n");
 
 	if ((rc = adapter->native->sl_ops->adapter_regs_init(adapter, dev)))
 		goto err;
 
-	dev_err(&dev->dev, "\n\n\n\ninit_implementation_adapter_regs completed\n");
-
 	if ((rc = pnv_phb_to_cxl_mode(dev, OPAL_PHB_CAPI_MODE_CAPI)))
 		goto err;
-
-	dev_err(&dev->dev, "\n\n\n\npnv_phb_to_cxl_mode CAPI completed\n");
-
-#if 0
-	dev_err(&dev->dev, "bailing\n");
-	rc = -EBUSY;
-	goto err;
-#endif
 
 	/* If recovery happened, the last step is to turn on snooping.
 	 * In the non-recovery case this has no effect */
 	if ((rc = pnv_phb_to_cxl_mode(dev, OPAL_PHB_CAPI_MODE_SNOOP_ON)))
 		goto err;
 
-	dev_err(&dev->dev, "\n\n\n\npnv_phb_to_cxl_mode SNOOP completed\n");
-
 	if ((rc = cxl_setup_psl_timebase(adapter, dev)))
 		goto err;
 
-	dev_err(&dev->dev, "\n\n\n\ncxl_setup_psl_timebase\n");
-
 	if ((rc = cxl_native_register_psl_err_irq(adapter)))
 		goto err;
-
-	dev_err(&dev->dev, "\n\n\n\ncxl_register_psl_err_irq\n");
 
 	return 0;
 
