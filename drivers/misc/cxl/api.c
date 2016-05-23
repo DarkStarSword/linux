@@ -124,7 +124,7 @@ int _cxl_allocate_afu_irqs(struct cxl_context *ctx, int num)
 	if (res)
 		return res;
 
-	if (!cxl_supports_multiplexed_psl_irq(ctx->afu->adapter)) {
+	if (!cpu_has_feature(CPU_FTR_HVMODE)) {
 		/* In a guest, the PSL interrupt is not multiplexed. It was
 		 * allocated above, and we need to set its handler
 		 */

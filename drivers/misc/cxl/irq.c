@@ -21,6 +21,13 @@
 #include "cxl.h"
 #include "trace.h"
 
+static int afu_irq_range_start(void)
+{
+	if (cpu_has_feature(CPU_FTR_HVMODE))
+		return 1;
+	return 0;
+}
+
 static irqreturn_t schedule_cxl_fault(struct cxl_context *ctx, u64 dsisr, u64 dar)
 {
 	ctx->dsisr = dsisr;
@@ -251,7 +258,7 @@ int afu_allocate_irqs(struct cxl_context *ctx, u32 count)
 	 * and is the first interrupt from range 0. It still needs to be
 	 * allocated, so bump the count by one.
 	 */
-	if (cxl_supports_multiplexed_psl_irq(ctx->afu->adapter))
+	if (cpu_has_feature(CPU_FTR_HVMODE))
 		alloc_count = count;
 	else
 		alloc_count = count + 1;
@@ -263,7 +270,7 @@ int afu_allocate_irqs(struct cxl_context *ctx, u32 count)
 							alloc_count)))
 		return rc;
 
-	if (cxl_supports_multiplexed_psl_irq(ctx->afu->adapter)) {
+	if (cpu_has_feature(CPU_FTR_HVMODE)) {
 		/* Multiplexed PSL Interrupt */
 		ctx->irqs.offset[0] = ctx->afu->native->psl_hwirq;
 		ctx->irqs.range[0] = 1;
@@ -279,7 +286,7 @@ int afu_allocate_irqs(struct cxl_context *ctx, u32 count)
 	 * Allocate names first.  If any fail, bail out before allocating
 	 * actual hardware IRQs.
 	 */
-	for (r = cxl_afu_irq_range_start(ctx->afu->adapter); r < CXL_IRQ_RANGES; r++) {
+	for (r = afu_irq_range_start(); r < CXL_IRQ_RANGES; r++) {
 		for (i = 0; i < ctx->irqs.range[r]; i++) {
 			irq_name = kmalloc(sizeof(struct cxl_irq_name),
 					   GFP_KERNEL);
@@ -314,7 +321,7 @@ static void afu_register_hwirqs(struct cxl_context *ctx)
 
 	/* We've allocated all memory now, so let's do the irq allocations */
 	irq_name = list_first_entry(&ctx->irq_names, struct cxl_irq_name, list);
-	for (r = cxl_afu_irq_range_start(ctx->afu->adapter); r < CXL_IRQ_RANGES; r++) {
+	for (r = afu_irq_range_start(); r < CXL_IRQ_RANGES; r++) {
 		hwirq = ctx->irqs.offset[r];
 		for (i = 0; i < ctx->irqs.range[r]; hwirq++, i++) {
 			if (r == 0 && i == 0)
@@ -356,7 +363,7 @@ void afu_release_irqs(struct cxl_context *ctx, void *cookie)
 	unsigned int virq;
 	int r, i;
 
-	for (r = cxl_afu_irq_range_start(ctx->afu->adapter); r < CXL_IRQ_RANGES; r++) {
+	for (r = afu_irq_range_start(); r < CXL_IRQ_RANGES; r++) {
 		hwirq = ctx->irqs.offset[r];
 		for (i = 0; i < ctx->irqs.range[r]; hwirq++, i++) {
 			virq = irq_find_mapping(NULL, hwirq);
