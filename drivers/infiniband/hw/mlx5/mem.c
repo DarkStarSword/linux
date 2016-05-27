@@ -139,7 +139,8 @@ static void mlx5_ib_populate_pas_capi(struct mlx5_ib_dev *dev,
 				      struct ib_umem *umem,
 				      int page_shift,
 				      __be64 *pas,
-				      int access_flags)
+				      int access_flags,
+				      bool pinned)
 {
 	unsigned long umem_page_shift = ilog2(umem->page_size);
 	int shift = page_shift - umem_page_shift;
@@ -150,15 +151,29 @@ static void mlx5_ib_populate_pas_capi(struct mlx5_ib_dev *dev,
 	int len;
 	struct scatterlist *sg;
 	int entry;
+	int npages;
 
 	u64 cur2, base2; /*not need*/
 
-	i = 0;
-	base = umem->address;
-	
-	/* Alignment */
-	base = base - (base % (umem->page_size));
+	/* Get aligned virtual address */
+	base  = umem->address;
+	base &= ~((1 << page_shift) -1);	
 
+	if (!pinned) {
+		npages = (((umem->address + umem->length) - base) >> page_shift) + 1;
+		
+		cur    = base | access_flags;
+		for (i = 0; i < npages; i++) {
+			pas[i] = cpu_to_be64(cur);
+			cur   += (1 << page_shift);
+			mlx5_ib_dbg(dev, "non pinned pas[%d] = 0x%llx\n",
+				    i, be64_to_cpu(pas[i]));
+		}
+		return;
+	}
+
+	/* For pinned memory */
+	i = 0;
 	for_each_sg(umem->sg_head.sgl, sg, umem->nmap, entry) {
 		base2 = sg_dma_address(sg);
 
@@ -236,9 +251,16 @@ static void mlx5_ib_populate_pas_pcie(struct mlx5_ib_dev *dev,
  * access_flags - access flags to set on all present pages.
 		  use enum mlx5_ib_mtt_access_flags for this.
  */
+#ifdef CONFIG_MLX5_CAPI
+void __mlx5_ib_populate_pas(struct mlx5_ib_dev *dev, struct ib_umem *umem,
+			    int page_shift, size_t offset, size_t num_pages,
+			    __be64 *pas, int access_flags,
+			    bool pinned)
+#else
 void __mlx5_ib_populate_pas(struct mlx5_ib_dev *dev, struct ib_umem *umem,
 			    int page_shift, size_t offset, size_t num_pages,
 			    __be64 *pas, int access_flags)
+#endif
 {
 	unsigned long umem_page_shift = ilog2(umem->page_size);
 	int shift = page_shift - umem_page_shift;
@@ -262,7 +284,8 @@ void __mlx5_ib_populate_pas(struct mlx5_ib_dev *dev, struct ib_umem *umem,
 
 #ifdef CONFIG_MLX5_CAPI
 	if (get_cxl_mode(dev->mdev))
-		mlx5_ib_populate_pas_capi(dev, umem, page_shift, pas, access_flags);		
+		mlx5_ib_populate_pas_capi(dev, umem, page_shift,
+					  pas, access_flags, pinned);
 	else
 		mlx5_ib_populate_pas_pcie(dev, umem, page_shift, pas, access_flags);
 #else
@@ -270,6 +293,17 @@ void __mlx5_ib_populate_pas(struct mlx5_ib_dev *dev, struct ib_umem *umem,
 #endif
 }
 
+#ifdef CONFIG_MLX5_CAPI
+void mlx5_ib_populate_pas(struct mlx5_ib_dev *dev, struct ib_umem *umem,
+			  int page_shift, __be64 *pas, int access_flags,
+			  bool pinned)
+{
+	return __mlx5_ib_populate_pas(dev, umem, page_shift, 0,
+				      ib_umem_num_pages(umem), pas,
+				      access_flags,
+				      pinned);
+}
+#else
 void mlx5_ib_populate_pas(struct mlx5_ib_dev *dev, struct ib_umem *umem,
 			  int page_shift, __be64 *pas, int access_flags)
 {
@@ -277,6 +311,8 @@ void mlx5_ib_populate_pas(struct mlx5_ib_dev *dev, struct ib_umem *umem,
 				      ib_umem_num_pages(umem), pas,
 				      access_flags);
 }
+#endif
+
 int mlx5_ib_get_buf_offset(u64 addr, int page_shift, u32 *offset)
 {
 	u64 page_size;

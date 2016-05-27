@@ -970,6 +970,7 @@ enum {
 	MLX5_MKEY_STATUS_FREE = 1 << 6,
 };
 
+#define MLX5_MKEY_MAX_PAGE_SHIFT 30 /* 1GB page */
 struct mlx5_mkey_seg {
 	/* This is a two bit field occupying bits 31-30.
 	 * bit 31 is always 0,

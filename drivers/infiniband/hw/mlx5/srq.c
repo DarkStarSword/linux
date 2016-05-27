@@ -139,7 +139,11 @@ static int create_srq_user(struct ib_pd *pd, struct mlx5_ib_srq *srq,
 		goto err_umem;
 	}
 
+#ifdef CONFIG_MLX5_CAPI
+	mlx5_ib_populate_pas(dev, srq->umem, page_shift, (*in)->pas, 0, 1);
+#else
 	mlx5_ib_populate_pas(dev, srq->umem, page_shift, (*in)->pas, 0);
+#endif
 
 	err = mlx5_ib_db_map_user(to_mucontext(pd->uobject->context),
 				  ucmd.db_addr, &srq->db);

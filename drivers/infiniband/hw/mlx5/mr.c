@@ -809,7 +809,7 @@ static struct mlx5_ib_mr *reg_umr(struct ib_pd *pd, struct ib_umem *umem,
 	}
 
 	pas = PTR_ALIGN(mr_pas, MLX5_UMR_ALIGN);
-	mlx5_ib_populate_pas(dev, umem, page_shift, pas, MLX5_IB_MTT_PRESENT);
+	mlx5_ib_populate_pas(dev, umem, page_shift, pas, MLX5_IB_MTT_PRESENT, 0); /* Huy todo dma_map_single */
 	/* Clear padding after the actual pages. */
 
 	memset(pas + npages, 0, size - npages * sizeof(u64));
@@ -929,7 +929,7 @@ int mlx5_ib_update_mtt(struct mlx5_ib_mr *mr, u64 start_page_index, int npages,
 		if (!zap) {
 			__mlx5_ib_populate_pas(dev, umem, PAGE_SHIFT,
 					       start_page_index, npages, pas,
-					       MLX5_IB_MTT_PRESENT);
+					       MLX5_IB_MTT_PRESENT, 1); /* Huy to do */
 			/* Clear padding after the pages brought from the
 			 * umem. */
 			memset(pas + npages, 0, size - npages * sizeof(u64));
@@ -1006,7 +1006,7 @@ static struct mlx5_ib_mr *reg_create(struct ib_pd *pd, u64 virt_addr,
 		goto err_1;
 	}
 	mlx5_ib_populate_pas(dev, umem, page_shift, in->pas,
-			     pg_cap ? MLX5_IB_MTT_PRESENT : 0);
+			     pg_cap ? MLX5_IB_MTT_PRESENT : 0, 0);
 	/* The MLX5_MKEY_INBOX_PG_ACCESS bit allows setting the access flags
 	 * in the page list submitted with the command. */
 	in->flags = pg_cap ? cpu_to_be32(MLX5_MKEY_INBOX_PG_ACCESS) : 0;
@@ -1024,7 +1024,7 @@ static struct mlx5_ib_mr *reg_create(struct ib_pd *pd, u64 virt_addr,
 
 #ifdef CONFIG_MLX5_CAPI
 	in->seg.pe_id =
-		cpu_to_be16(mlx5_capi_get_pe_id2(pd->uobject->context));
+		cpu_to_be16(mlx5_capi_get_pe_id(pd->uobject->context));
 #endif
 
 	err = mlx5_core_create_mkey(dev->mdev, &mr->mmr, in, inlen, NULL,
@@ -1064,8 +1064,53 @@ struct ib_mr *mlx5_ib_reg_user_mr(struct ib_pd *pd, u64 start, u64 length,
 	int order;
 	int err;
 
+#ifdef CONFIG_MLX5_CAPI
+	u64 base;
+#endif
+
 	mlx5_ib_dbg(dev, "start 0x%llx, virt_addr 0x%llx, length 0x%llx, access_flags 0x%x\n",
 		    start, virt_addr, length, access_flags);
+
+#ifdef CONFIG_MLX5_CAPI
+	if (get_cxl_mode(dev->mdev)) {
+		umem = ib_umem_get_no_pin(pd->uobject->context,
+					  start, length, access_flags);
+		
+		page_shift = ilog2(roundup_pow_of_two(length)); 
+		mlx5_ib_dbg(dev, "Actual page shift = %d\n", page_shift);
+		if (page_shift >= MLX5_MKEY_MAX_PAGE_SHIFT)
+			page_shift = MLX5_MKEY_MAX_PAGE_SHIFT;
+		else {
+			/* If span accross two pages, double page size */
+			base = start & (~((1 << page_shift) -1));
+			if ((start + length) >= (base + (1 << page_shift)))
+				page_shift ++;
+		}
+
+		base    = start & (~((1 << page_shift) -1));
+		npages  = (((start + length) - base) >> page_shift) + 1;
+		ncont   = npages;
+		order   = ilog2(roundup_pow_of_two(npages));
+	} else {
+		umem = ib_umem_get(pd->uobject->context,
+				   start, length, access_flags, 0);
+	
+		if (IS_ERR(umem)) {
+			mlx5_ib_dbg(dev, "umem get failed (%ld)\n", PTR_ERR(umem));
+			return (void *)umem;
+		}
+
+		mlx5_ib_cont_pages(umem, start, &npages, &page_shift, &ncont, &order);
+		if (!npages) {
+			mlx5_ib_warn(dev, "avoid zero region\n");
+			err = -EINVAL;
+			goto error;
+		}
+	}
+	
+	mlx5_ib_dbg(dev, "npages %d, ncont %d, order %d, page_shift %d\n",
+		    npages, ncont, order, page_shift);
+#else	
 	umem = ib_umem_get(pd->uobject->context, start, length, access_flags,
 			   0);
 	if (IS_ERR(umem)) {
@@ -1082,6 +1127,7 @@ struct ib_mr *mlx5_ib_reg_user_mr(struct ib_pd *pd, u64 start, u64 length,
 
 	mlx5_ib_dbg(dev, "npages %d, ncont %d, order %d, page_shift %d\n",
 		    npages, ncont, order, page_shift);
+#endif
 
 	/* Huy temporarily disable umr */
 #ifndef CONFIG_MLX5_CAPI
@@ -1112,7 +1158,9 @@ struct ib_mr *mlx5_ib_reg_user_mr(struct ib_pd *pd, u64 start, u64 length,
 
 	mr->umem = umem;
 	mr->npages = npages;
+#ifndef CONFIG_MLX5_CAPI
 	atomic_add(npages, &dev->mdev->priv.reg_pages);
+#endif
 	mr->ibmr.lkey = mr->mmr.key;
 	mr->ibmr.rkey = mr->mmr.key;
 
@@ -1144,7 +1192,14 @@ struct ib_mr *mlx5_ib_reg_user_mr(struct ib_pd *pd, u64 start, u64 length,
 	return &mr->ibmr;
 
 error:
+#ifdef CONFIG_MLX5_CAPI
+	if (get_cxl_mode(dev->mdev))
+		ib_umem_release_no_pin(umem);
+	else
+		ib_umem_release(umem);
+#else
 	ib_umem_release(umem);
+#endif
 	return ERR_PTR(err);
 }
 
@@ -1303,7 +1358,14 @@ int mlx5_ib_dereg_mr(struct ib_mr *ibmr)
 	clean_mr(mr);
 
 	if (umem) {
+		#ifdef CONFIG_MLX5_CAPI
+		if (get_cxl_mode(dev->mdev))
+			ib_umem_release_no_pin(umem);
+		else
+			ib_umem_release(umem);
+		#else
 		ib_umem_release(umem);
+		#endif
 		atomic_sub(npages, &dev->mdev->priv.reg_pages);
 	}
 
@@ -1381,7 +1443,7 @@ struct ib_mr *mlx5_ib_alloc_mr(struct ib_pd *pd,
 	in->seg.flags = MLX5_PERM_UMR_EN | access_mode;
 #ifdef CONFIG_MLX5_CAPI
 	in->seg.pe_id =
-		cpu_to_be16(mlx5_capi_get_pe_id2(pd->uobject->context));
+		cpu_to_be16(mlx5_capi_get_pe_id(pd->uobject->context));
 #endif
 	err = mlx5_core_create_mkey(dev->mdev, &mr->mmr, in, sizeof(*in),
 				    NULL, NULL, NULL);

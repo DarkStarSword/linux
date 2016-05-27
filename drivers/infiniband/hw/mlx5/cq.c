@@ -675,7 +675,11 @@ static int create_cq_user(struct mlx5_ib_dev *dev, struct ib_udata *udata,
 		err = -ENOMEM;
 		goto err_db;
 	}
+#ifdef CONFIG_MLX5_CAPI
+	mlx5_ib_populate_pas(dev, cq->buf.umem, page_shift, (*cqb)->pas, 0, 1);
+#else
 	mlx5_ib_populate_pas(dev, cq->buf.umem, page_shift, (*cqb)->pas, 0);
+#endif
 	(*cqb)->ctx.log_pg_sz = page_shift - MLX5_ADAPTER_PAGE_SHIFT;
 
 	*index = to_mucontext(context)->uuari.uars[0].index;
@@ -1155,10 +1159,15 @@ int mlx5_ib_resize_cq(struct ib_cq *ibcq, int entries, struct ib_udata *udata)
 		goto ex_resize;
 	}
 
-	if (udata)
+	if (udata) {
+#ifdef CONFIG_MLX5_CAPI
+		mlx5_ib_populate_pas(dev, cq->resize_umem, page_shift,
+				     in->pas, 0, 1);
+#else
 		mlx5_ib_populate_pas(dev, cq->resize_umem, page_shift,
 				     in->pas, 0);
-	else {
+#endif
+	} else {
 #ifdef CONFIG_MLX5_CAPI
 		mlx5_fill_page_array(dev->mdev, &cq->resize_buf->buf, in->pas);
 #else	

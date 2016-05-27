@@ -716,8 +716,13 @@ static int create_user_qp(struct mlx5_ib_dev *dev, struct ib_pd *pd,
 		goto err_umem;
 	}
 	if (ubuffer->umem)
+#ifdef CONFIG_MLX5_CAPI
+		mlx5_ib_populate_pas(dev, ubuffer->umem, page_shift,
+				     (*in)->pas, 0, 1);
+#else
 		mlx5_ib_populate_pas(dev, ubuffer->umem, page_shift,
 				     (*in)->pas, 0);
+#endif
 	(*in)->ctx.log_pg_sz_remote_qpn =
 		cpu_to_be32((page_shift - MLX5_ADAPTER_PAGE_SHIFT) << 24);
 	(*in)->ctx.params2 = cpu_to_be32(offset << 6);
@@ -970,8 +975,11 @@ static int create_raw_packet_qp_sq(struct mlx5_ib_dev *dev,
 	MLX5_SET(wq, wq, page_offset, offset);
 
 	pas = (__be64 *)MLX5_ADDR_OF(wq, wq, pas);
+#ifdef CONFIG_MLX5_CAPI
+	mlx5_ib_populate_pas(dev, sq->ubuffer.umem, page_shift, pas, 0, 1);
+#else
 	mlx5_ib_populate_pas(dev, sq->ubuffer.umem, page_shift, pas, 0);
-
+#endif
 	err = mlx5_core_create_sq_tracked(dev->mdev, in, inlen, &sq->base.mqp);
 
 	kvfree(in);

@@ -116,9 +116,6 @@ struct mlx5_ib_ucontext {
 #ifdef CONFIG_MLX5_CAPI
 	struct cxl_context     *ctx;
 	int                     pe;
-
-	struct cxl_context     *ctx2;
-	int                     pe2;	
 #endif
 };
 
@@ -708,11 +705,22 @@ int mlx5_ib_init_fmr(struct mlx5_ib_dev *dev);
 void mlx5_ib_cleanup_fmr(struct mlx5_ib_dev *dev);
 void mlx5_ib_cont_pages(struct ib_umem *umem, u64 addr, int *count, int *shift,
 			int *ncont, int *order);
+
+#ifdef CONFIG_MLX5_CAPI
+void __mlx5_ib_populate_pas(struct mlx5_ib_dev *dev, struct ib_umem *umem,
+			    int page_shift, size_t offset, size_t num_pages,
+			    __be64 *pas, int access_flags, bool pinned);
+void mlx5_ib_populate_pas(struct mlx5_ib_dev *dev, struct ib_umem *umem,
+			  int page_shift, __be64 *pas, int access_flags,
+			  bool pinned);
+#else
 void __mlx5_ib_populate_pas(struct mlx5_ib_dev *dev, struct ib_umem *umem,
 			    int page_shift, size_t offset, size_t num_pages,
 			    __be64 *pas, int access_flags);
 void mlx5_ib_populate_pas(struct mlx5_ib_dev *dev, struct ib_umem *umem,
 			  int page_shift, __be64 *pas, int access_flags);
+#endif
+
 void mlx5_ib_copy_pas(u64 *old, u64 *new, int step, int num);
 int mlx5_ib_get_cqe_size(struct mlx5_ib_dev *dev, struct ib_cq *ibcq);
 int mlx5_mr_cache_init(struct mlx5_ib_dev *dev);
@@ -808,8 +816,12 @@ static inline int verify_assign_uidx(u8 cqe_version, u32 cmd_uidx,
 }
 
 #ifdef CONFIG_MLX5_CAPI
+struct ib_umem *ib_umem_get_no_pin(struct ib_ucontext *context,
+				   unsigned long addr,
+				   size_t size,
+				   int access);
+void ib_umem_release_no_pin(struct ib_umem *umem);
 int mlx5_capi_get_default_pe_id(struct ib_pd *pd);
-int mlx5_capi_get_pe_id2(struct ib_ucontext *ibcontext);
 int mlx5_capi_get_pe_id(struct ib_ucontext *ibcontext);
 int mlx5_capi_allocate_cxl_context(struct ib_ucontext *ibcontext,
 				   struct mlx5_ib_dev *dev);
