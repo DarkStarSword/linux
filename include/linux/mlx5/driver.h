@@ -45,6 +45,13 @@
 #include <linux/mlx5/device.h>
 #include <linux/mlx5/doorbell.h>
 
+#ifdef CONFIG_MLX5_CAPI
+#include <misc/cxl.h>
+
+/* Get cxl mode from mlx5_core_dev */
+#define get_cxl_mode(dev) (dev->priv.capi.cxl_mode)
+#endif
+
 enum {
 	MLX5_BOARD_ID_LEN = 64,
 	MLX5_MAX_NAME_LEN = 16,
@@ -450,6 +457,16 @@ struct mlx5_irq_info {
 	char name[MLX5_MAX_IRQ_NAME];
 };
 
+#ifdef CONFIG_MLX5_CAPI
+struct mlx5_capi_priv {
+	int                     vsec;
+	bool                    cxl_mode;
+	int                     default_pe;
+	int                     direct_pe;
+	struct cxl_context     *direct_ctx;
+};
+#endif
+
 struct mlx5_eswitch;
 
 struct mlx5_priv {
@@ -511,6 +528,10 @@ struct mlx5_priv {
 	unsigned long		pci_dev_data;
 	struct mlx5_flow_root_namespace *root_ns;
 	struct mlx5_flow_root_namespace *fdb_root_ns;
+
+#ifdef CONFIG_MLX5_CAPI
+	struct mlx5_capi_priv   capi;
+#endif
 };
 
 enum mlx5_device_state {
@@ -562,6 +583,9 @@ struct mlx5_db {
 	}			u;
 	dma_addr_t		dma;
 	int			index;
+#ifdef CONFIG_MLX5_CAPI
+	u64			virt_addr;
+#endif
 };
 
 enum {
@@ -715,7 +739,11 @@ int mlx5_cmd_exec(struct mlx5_core_dev *dev, void *in, int in_size, void *out,
 int mlx5_cmd_exec_cb(struct mlx5_core_dev *dev, void *in, int in_size,
 		     void *out, int out_size, mlx5_cmd_cbk_t callback,
 		     void *context);
+#if CONFIG_MLX5_CAPI
+int mlx5_cmd_alloc_uar(struct mlx5_core_dev *dev, u32 *uarn, int pe_id);
+#else
 int mlx5_cmd_alloc_uar(struct mlx5_core_dev *dev, u32 *uarn);
+#endif
 int mlx5_cmd_free_uar(struct mlx5_core_dev *dev, u32 uarn);
 int mlx5_alloc_uuars(struct mlx5_core_dev *dev, struct mlx5_uuar_info *uuari);
 int mlx5_free_uuars(struct mlx5_core_dev *dev, struct mlx5_uuar_info *uuari);
@@ -773,7 +801,14 @@ void mlx5_register_debugfs(void);
 void mlx5_unregister_debugfs(void);
 int mlx5_eq_init(struct mlx5_core_dev *dev);
 void mlx5_eq_cleanup(struct mlx5_core_dev *dev);
+
+#ifdef CONFIG_MLX5_CAPI
+void mlx5_fill_page_array(struct mlx5_core_dev *mdev,
+			  struct mlx5_buf *buf, __be64 *pas);
+#else
 void mlx5_fill_page_array(struct mlx5_buf *buf, __be64 *pas);
+#endif
+
 void mlx5_cq_completion(struct mlx5_core_dev *dev, u32 cqn);
 void mlx5_rsc_event(struct mlx5_core_dev *dev, u32 rsn, int event_type);
 #ifdef CONFIG_INFINIBAND_ON_DEMAND_PAGING

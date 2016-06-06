@@ -715,7 +715,11 @@ static int create_cq_user(struct mlx5_ib_dev *dev, struct ib_udata *udata,
 		err = -ENOMEM;
 		goto err_db;
 	}
+#ifdef CONFIG_MLX5_CAPI
+	mlx5_ib_populate_pas(dev, cq->buf.umem, page_shift, (*cqb)->pas, 0, 1);
+#else
 	mlx5_ib_populate_pas(dev, cq->buf.umem, page_shift, (*cqb)->pas, 0);
+#endif
 	(*cqb)->ctx.log_pg_sz = page_shift - MLX5_ADAPTER_PAGE_SHIFT;
 
 	*index = to_mucontext(context)->uuari.uars[0].index;
@@ -776,7 +780,12 @@ static int create_cq_kernel(struct mlx5_ib_dev *dev, struct mlx5_ib_cq *cq,
 		err = -ENOMEM;
 		goto err_buf;
 	}
+
+#ifdef CONFIG_MLX5_CAPI
+	mlx5_fill_page_array(dev->mdev, &cq->buf.buf, (*cqb)->pas);
+#else
 	mlx5_fill_page_array(&cq->buf.buf, (*cqb)->pas);
+#endif
 
 	(*cqb)->ctx.log_pg_sz = cq->buf.buf.page_shift - MLX5_ADAPTER_PAGE_SHIFT;
 	*index = dev->mdev->priv.uuari.uars[0].index;
@@ -871,7 +880,15 @@ struct ib_cq *mlx5_ib_create_cq(struct ib_device *ibdev,
 		goto err_cqb;
 
 	cqb->ctx.c_eqn = cpu_to_be16(eqn);
+
+#ifdef CONFIG_MLX5_CAPI
+	if (get_cxl_mode(dev->mdev))
+		cqb->ctx.db_record_addr = cpu_to_be64(cq->db.virt_addr);
+	else
+		cqb->ctx.db_record_addr = cpu_to_be64(cq->db.dma);
+#else
 	cqb->ctx.db_record_addr = cpu_to_be64(cq->db.dma);
+#endif
 
 	err = mlx5_core_create_cq(dev->mdev, &cq->mcq, cqb, inlen);
 	if (err)
@@ -1198,11 +1215,19 @@ int mlx5_ib_resize_cq(struct ib_cq *ibcq, int entries, struct ib_udata *udata)
 		goto ex_resize;
 	}
 
+#ifdef CONFIG_MLX5_CAPI
+	if (udata)
+		mlx5_ib_populate_pas(dev, cq->resize_umem, page_shift,
+				     in->pas, 0, 1);
+	else
+		mlx5_fill_page_array(dev->mdev, &cq->resize_buf->buf, in->pas);
+#else
 	if (udata)
 		mlx5_ib_populate_pas(dev, cq->resize_umem, page_shift,
 				     in->pas, 0);
 	else
 		mlx5_fill_page_array(&cq->resize_buf->buf, in->pas);
+#endif
 
 	in->field_select = cpu_to_be32(MLX5_MODIFY_CQ_MASK_LOG_SIZE  |
 				       MLX5_MODIFY_CQ_MASK_PG_OFFSET |

@@ -43,6 +43,9 @@
 #include <linux/debugfs.h>
 
 #include "mlx5_core.h"
+#ifdef CONFIG_MLX5_CAPI
+	#include "capi.h"
+#endif
 
 enum {
 	CMD_IF_REV = 5,
@@ -666,12 +669,31 @@ static void cmd_work_handler(struct work_struct *work)
 	memset(lay, 0, sizeof(*lay));
 	memcpy(lay->in, ent->in->first.data, sizeof(lay->in));
 	ent->op = be32_to_cpu(lay->in[0]) >> 16;
-	if (ent->in->next)
+
+	if (ent->in->next) {
+#ifdef CONFIG_MLX5_CAPI
+		if (get_cxl_mode(dev))
+			lay->in_ptr = cpu_to_be64((u64)(ent->in->next->buf));
+		else
+			lay->in_ptr = cpu_to_be64(ent->in->next->dma);
+#else
 		lay->in_ptr = cpu_to_be64(ent->in->next->dma);
+#endif
+	}
 	lay->inlen = cpu_to_be32(ent->in->len);
-	if (ent->out->next)
+
+	if (ent->out->next) {
+#ifdef CONFIG_MLX5_CAPI
+		if (get_cxl_mode(dev))
+			lay->out_ptr = cpu_to_be64((u64)(ent->out->next->buf));
+		else
+			lay->out_ptr = cpu_to_be64(ent->out->next->dma);
+#else
 		lay->out_ptr = cpu_to_be64(ent->out->next->dma);
+#endif
+	}
 	lay->outlen = cpu_to_be32(ent->out->len);
+
 	lay->type = MLX5_PCI_CMD_XPORT;
 	lay->token = ent->token;
 	lay->status_own = CMD_OWNER_HW;
@@ -984,11 +1006,22 @@ static struct mlx5_cmd_msg *mlx5_alloc_cmd_msg(struct mlx5_core_dev *dev,
 
 		block = tmp->buf;
 		tmp->next = head;
+
+#ifdef CONFIG_MLX5_CAPI
+		if (get_cxl_mode(dev))
+			block->next =
+				cpu_to_be64(tmp->next ? (u64)(tmp->next->buf) : 0);
+		else
+			block->next =
+				cpu_to_be64(tmp->next ? tmp->next->dma : 0);
+#else
 		block->next = cpu_to_be64(tmp->next ? tmp->next->dma : 0);
+#endif
 		block->block_num = cpu_to_be32(n - i - 1);
 		head = tmp;
 	}
 	msg->next = head;
+
 	msg->len = size;
 	return msg;
 
@@ -1621,8 +1654,19 @@ int mlx5_cmd_init(struct mlx5_core_dev *dev)
 	sema_init(&cmd->sem, cmd->max_reg_cmds);
 	sema_init(&cmd->pages_sem, 1);
 
+#ifdef CONFIG_MLX5_CAPI
+	if (get_cxl_mode(dev)) {
+		cmd_h = (u32)((u64)(cmd->cmd_buf) >> 32);
+		cmd_l = (u32)((u64)(cmd->cmd_buf));
+	} else {
+		cmd_h = (u32)((u64)(cmd->dma) >> 32);
+		cmd_l = (u32)(cmd->dma);
+	}
+#else
 	cmd_h = (u32)((u64)(cmd->dma) >> 32);
 	cmd_l = (u32)(cmd->dma);
+#endif
+
 	if (cmd_l & 0xfff) {
 		dev_err(&dev->pdev->dev, "invalid command queue address\n");
 		err = -ENOMEM;
