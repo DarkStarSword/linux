@@ -41,6 +41,10 @@
 
 #include "mlx5_core.h"
 
+#ifdef CONFIG_MLX5_CAPI
+#include "capi.h"
+#endif
+
 /* Handling for queue buffers -- we allocate a bunch of memory and
  * register it in a memory region at HCA virtual address 0.
  */
@@ -138,6 +142,10 @@ static int mlx5_alloc_db_from_pgdir(struct mlx5_db_pgdir *pgdir,
 	db->db      = pgdir->db_page + offset / sizeof(*pgdir->db_page);
 	db->dma     = pgdir->db_dma  + offset;
 
+#ifdef CONFIG_MLX5_CAPI
+	db->virt_addr = (u64)(db->db);
+#endif
+
 	db->db[0] = 0;
 	db->db[1] = 0;
 
@@ -196,15 +204,25 @@ void mlx5_db_free(struct mlx5_core_dev *dev, struct mlx5_db *db)
 }
 EXPORT_SYMBOL_GPL(mlx5_db_free);
 
-
+#ifdef CONFIG_MLX5_CAPI
+void mlx5_fill_page_array(struct mlx5_core_dev *mdev,
+			  struct mlx5_buf *buf, __be64 *pas)
+#else
 void mlx5_fill_page_array(struct mlx5_buf *buf, __be64 *pas)
+#endif
 {
 	u64 addr;
 	int i;
 
 	for (i = 0; i < buf->npages; i++) {
+#ifdef CONFIG_MLX5_CAPI
+		if (get_cxl_mode(mdev))
+			addr = (u64)(buf->direct.buf) + (i << buf->page_shift);
+		else
+			addr = buf->direct.map + (i << buf->page_shift);
+#else
 		addr = buf->direct.map + (i << buf->page_shift);
-
+#endif
 		pas[i] = cpu_to_be64(addr);
 	}
 }

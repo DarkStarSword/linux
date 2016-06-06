@@ -134,22 +134,13 @@ static u64 umem_dma_to_mtt(dma_addr_t umem_dma)
 }
 #endif
 
-/*
- * Populate the given array with bus addresses from the umem.
- *
- * dev - mlx5_ib device
- * umem - umem to use to fill the pages
- * page_shift - determines the page size used in the resulting array
- * offset - offset into the umem to start from,
- *          only implemented for ODP umems
- * num_pages - total number of pages to fill
- * pas - bus addresses array to fill
- * access_flags - access flags to set on all present pages.
-		  use enum mlx5_ib_mtt_access_flags for this.
- */
-void __mlx5_ib_populate_pas(struct mlx5_ib_dev *dev, struct ib_umem *umem,
-			    int page_shift, size_t offset, size_t num_pages,
-			    __be64 *pas, int access_flags)
+#ifdef CONFIG_MLX5_CAPI
+static void mlx5_ib_populate_pas_capi(struct mlx5_ib_dev *dev,
+				      struct ib_umem *umem,
+				      int page_shift,
+				      __be64 *pas,
+				      int access_flags,
+				      bool pinned)
 {
 	unsigned long umem_page_shift = ilog2(umem->page_size);
 	int shift = page_shift - umem_page_shift;
@@ -160,21 +151,76 @@ void __mlx5_ib_populate_pas(struct mlx5_ib_dev *dev, struct ib_umem *umem,
 	int len;
 	struct scatterlist *sg;
 	int entry;
-#ifdef CONFIG_INFINIBAND_ON_DEMAND_PAGING
-	const bool odp = umem->odp_data != NULL;
+	int npages;
 
-	if (odp) {
-		WARN_ON(shift != 0);
-		WARN_ON(access_flags != (MLX5_IB_MTT_READ | MLX5_IB_MTT_WRITE));
+	u64 cur2, base2; /*not need*/
 
-		for (i = 0; i < num_pages; ++i) {
-			dma_addr_t pa = umem->odp_data->dma_list[offset + i];
+	/* Get aligned virtual address */
+	base  = umem->address;
+	base &= ~((1 << page_shift) -1);
 
-			pas[i] = cpu_to_be64(umem_dma_to_mtt(pa));
+	if (!pinned) {
+		npages  = (((umem->address + umem->length) - base) >> page_shift);
+		/* If span accross two pages, add a page */
+		if ((umem->address + umem->length) >=
+			(base + (1 << page_shift)))
+			npages ++;
+
+		cur    = base | access_flags;
+		for (i = 0; i < npages; i++) {
+			pas[i] = cpu_to_be64(cur);
+			cur   += (1 << page_shift);
+			mlx5_ib_dbg(dev, "non pinned pas[%d] = 0x%llx\n",
+				    i, be64_to_cpu(pas[i]));
 		}
 		return;
 	}
+
+	/* For pinned memory */
+	i = 0;
+	for_each_sg(umem->sg_head.sgl, sg, umem->nmap, entry) {
+		base2 = sg_dma_address(sg);
+
+		len = sg_dma_len(sg) >> umem_page_shift;
+		for (k = 0; k < len; k++) {
+			if (!(i & mask)) {
+				cur  = base + (k << umem_page_shift);
+				cur |= access_flags;
+
+                                cur2 = base2 + (k << umem_page_shift);
+                                cur2 |= access_flags;
+                                mlx5_ib_dbg(dev, "PA of pas[%d] 0x%llx\n",
+                                            i >> shift, cur2);
+
+				pas[i >> shift] = cpu_to_be64(cur);
+				mlx5_ib_dbg(dev, "pas[%d] 0x%llx\n",
+					    i >> shift, be64_to_cpu(pas[i >> shift]));
+			}  else
+				mlx5_ib_dbg(dev, "=====> 0x%llx\n",
+					    base + (k << umem_page_shift));
+			i++;
+		}
+
+		base += sg_dma_len(sg);
+	}
+}
 #endif
+
+static void mlx5_ib_populate_pas_pcie(struct mlx5_ib_dev *dev,
+				      struct ib_umem *umem,
+				      int page_shift,
+				      __be64 *pas,
+				      int access_flags)
+{
+	unsigned long umem_page_shift = ilog2(umem->page_size);
+	int shift = page_shift - umem_page_shift;
+	int mask = (1 << shift) - 1;
+	int i, k;
+	u64 cur = 0;
+	u64 base;
+	int len;
+	struct scatterlist *sg;
+	int entry;
 
 	i = 0;
 	for_each_sg(umem->sg_head.sgl, sg, umem->nmap, entry) {
@@ -196,6 +242,72 @@ void __mlx5_ib_populate_pas(struct mlx5_ib_dev *dev, struct ib_umem *umem,
 	}
 }
 
+/*
+ * Populate the given array with bus addresses from the umem.
+ *
+ * dev - mlx5_ib device
+ * umem - umem to use to fill the pages
+ * page_shift - determines the page size used in the resulting array
+ * offset - offset into the umem to start from,
+ *          only implemented for ODP umems
+ * num_pages - total number of pages to fill
+ * pas - bus addresses array to fill
+ * access_flags - access flags to set on all present pages.
+		  use enum mlx5_ib_mtt_access_flags for this.
+ */
+#ifdef CONFIG_MLX5_CAPI
+void __mlx5_ib_populate_pas(struct mlx5_ib_dev *dev, struct ib_umem *umem,
+			    int page_shift, size_t offset, size_t num_pages,
+			    __be64 *pas, int access_flags,
+			    bool pinned)
+#else
+void __mlx5_ib_populate_pas(struct mlx5_ib_dev *dev, struct ib_umem *umem,
+			    int page_shift, size_t offset, size_t num_pages,
+			    __be64 *pas, int access_flags)
+#endif
+{
+	unsigned long umem_page_shift = ilog2(umem->page_size);
+	int shift = page_shift - umem_page_shift;
+
+	int i;
+#ifdef CONFIG_INFINIBAND_ON_DEMAND_PAGING
+	const bool odp = umem->odp_data != NULL;
+
+	if (odp) {
+		WARN_ON(shift != 0);
+		WARN_ON(access_flags != (MLX5_IB_MTT_READ | MLX5_IB_MTT_WRITE));
+
+		for (i = 0; i < num_pages; ++i) {
+			dma_addr_t pa = umem->odp_data->dma_list[offset + i];
+
+			pas[i] = cpu_to_be64(umem_dma_to_mtt(pa));
+		}
+		return;
+	}
+#endif
+
+#ifdef CONFIG_MLX5_CAPI
+	if (get_cxl_mode(dev->mdev))
+		mlx5_ib_populate_pas_capi(dev, umem, page_shift,
+					  pas, access_flags, pinned);
+	else
+		mlx5_ib_populate_pas_pcie(dev, umem, page_shift, pas, access_flags);
+#else
+	mlx5_ib_populate_pas_pcie(dev, umem, page_shift, pas, access_flags);
+#endif
+}
+
+#ifdef CONFIG_MLX5_CAPI
+void mlx5_ib_populate_pas(struct mlx5_ib_dev *dev, struct ib_umem *umem,
+			  int page_shift, __be64 *pas, int access_flags,
+			  bool pinned)
+{
+	return __mlx5_ib_populate_pas(dev, umem, page_shift, 0,
+				      ib_umem_num_pages(umem), pas,
+				      access_flags,
+				      pinned);
+}
+#else
 void mlx5_ib_populate_pas(struct mlx5_ib_dev *dev, struct ib_umem *umem,
 			  int page_shift, __be64 *pas, int access_flags)
 {
@@ -203,6 +315,8 @@ void mlx5_ib_populate_pas(struct mlx5_ib_dev *dev, struct ib_umem *umem,
 				      ib_umem_num_pages(umem), pas,
 				      access_flags);
 }
+#endif
+
 int mlx5_ib_get_buf_offset(u64 addr, int page_shift, u32 *offset)
 {
 	u64 page_size;

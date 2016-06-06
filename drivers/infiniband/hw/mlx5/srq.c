@@ -137,7 +137,11 @@ static int create_srq_user(struct ib_pd *pd, struct mlx5_ib_srq *srq,
 		goto err_umem;
 	}
 
+#ifdef CONFIG_MLX5_CAPI
+	mlx5_ib_populate_pas(dev, srq->umem, page_shift, (*in)->pas, 0, 1);
+#else
 	mlx5_ib_populate_pas(dev, srq->umem, page_shift, (*in)->pas, 0);
+#endif
 
 	err = mlx5_ib_db_map_user(to_mucontext(pd->uobject->context),
 				  ucmd.db_addr, &srq->db);
@@ -210,7 +214,12 @@ static int create_srq_kernel(struct mlx5_ib_dev *dev, struct mlx5_ib_srq *srq,
 		err = -ENOMEM;
 		goto err_buf;
 	}
+
+#ifdef CONFIG_MLX5_CAPI
+	mlx5_fill_page_array(dev->mdev, &srq->buf, (*in)->pas);
+#else
 	mlx5_fill_page_array(&srq->buf, (*in)->pas);
+#endif
 
 	srq->wrid = kmalloc(srq->msrq.max * sizeof(u64), GFP_KERNEL);
 	if (!srq->wrid) {
@@ -258,9 +267,25 @@ static void destroy_srq_kernel(struct mlx5_ib_dev *dev, struct mlx5_ib_srq *srq)
 	mlx5_db_free(dev->mdev, &srq->db);
 }
 
+#ifdef CONFIG_MLX5_CAPI
+struct ib_srq *
+mlx5_ib_create_srq_wrapper(struct ib_pd *pd,
+			   struct ib_srq_init_attr *init_attr,
+			   struct ib_udata *udata)
+{
+	return mlx5_ib_create_srq(pd, init_attr, udata,
+				  mlx5_capi_get_pe_id(pd->uobject->context));
+}
+
+struct ib_srq *mlx5_ib_create_srq(struct ib_pd *pd,
+				  struct ib_srq_init_attr *init_attr,
+				  struct ib_udata *udata,
+				  int pe_id)
+#else
 struct ib_srq *mlx5_ib_create_srq(struct ib_pd *pd,
 				  struct ib_srq_init_attr *init_attr,
 				  struct ib_udata *udata)
+#endif
 {
 	struct mlx5_ib_dev *dev = to_mdev(pd->device);
 	struct mlx5_ib_srq *srq;
@@ -332,6 +357,9 @@ struct ib_srq *mlx5_ib_create_srq(struct ib_pd *pd,
 
 	in->ctx.pd = cpu_to_be32(to_mpd(pd)->pdn);
 	in->ctx.db_record = cpu_to_be64(srq->db.dma);
+#ifdef CONFIG_MLX5_CAPI
+	in->ctx.pe_id = cpu_to_be16(pe_id);
+#endif
 	err = mlx5_core_create_srq(dev->mdev, &srq->msrq, in, inlen, is_xrc);
 	kvfree(in);
 	if (err) {
