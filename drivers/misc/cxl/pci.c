@@ -1569,6 +1569,7 @@ static int cxl_probe(struct pci_dev *dev, const struct pci_device_id *id)
 	struct cxl *adapter;
 	int slice;
 	int rc;
+	int i;
 
 	if (cxl_pci_is_vphb_device(dev)) {
 		dev_dbg(&dev->dev, "cxl_init_adapter: Ignoring cxl vphb device\n");
@@ -1595,8 +1596,20 @@ static int cxl_probe(struct pci_dev *dev, const struct pci_device_id *id)
 			dev_err(&dev->dev, "AFU %i failed to start: %i\n", slice, rc);
 	}
 
-	if (pnv_pci_on_cxl_phb(dev) && adapter->slices >= 1)
+	if (pnv_pci_on_cxl_phb(dev) && adapter->slices >= 1) {
 		pnv_cxl_phb_set_peer_afu(dev, adapter->afu[0]);
+
+		/*
+		 * Reserve cxl process element IDs for all possible PFs such that PE ==
+		 * PF. For now reserve one for each possible PF (except for the XSL
+		 * which doesn't need one) to avoid any possible races during init.
+		 * These are used by the other PFs to talk to the XSL.
+		 */
+		for (i = 0; i < 8; i++) {
+			if (i != PCI_FUNC(dev->devfn))
+				cxl_reserve_pe(adapter->afu[0], i);
+		}
+	}
 
 	return 0;
 }

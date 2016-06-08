@@ -16,7 +16,7 @@
 
 #include "cxl.h"
 
-struct cxl_context *cxl_dev_context_init(struct pci_dev *dev)
+struct cxl_context *cxl_dev_context_init_reserved_pe(struct pci_dev *dev, int reserved_pe)
 {
 	struct address_space *mapping;
 	struct cxl_afu *afu;
@@ -49,7 +49,7 @@ struct cxl_context *cxl_dev_context_init(struct pci_dev *dev)
 	address_space_init_once(mapping);
 
 	/* Make it a slave context.  We can promote it later? */
-	rc = cxl_context_init(ctx, afu, false, mapping);
+	rc = cxl_context_init(ctx, afu, false, mapping, reserved_pe);
 	if (rc)
 		goto err_mapping;
 
@@ -61,6 +61,11 @@ err_ctx:
 	kfree(ctx);
 err_dev:
 	return ERR_PTR(rc);
+}
+
+struct cxl_context *cxl_dev_context_init(struct pci_dev *dev)
+{
+	return cxl_dev_context_init_reserved_pe(dev, -1);
 }
 EXPORT_SYMBOL_GPL(cxl_dev_context_init);
 

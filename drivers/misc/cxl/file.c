@@ -86,7 +86,7 @@ static int __afu_open(struct inode *inode, struct file *file, bool master)
 		goto err_put_afu;
 	}
 
-	if ((rc = cxl_context_init(ctx, afu, master, inode->i_mapping)))
+	if ((rc = cxl_context_init(ctx, afu, master, inode->i_mapping, -1)))
 		goto err_put_afu;
 
 	pr_devel("afu_open pe: %i\n", ctx->pe);

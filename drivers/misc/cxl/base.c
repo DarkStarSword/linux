@@ -97,7 +97,7 @@ EXPORT_SYMBOL_GPL(cxl_update_properties);
  * API calls into the driver that may be called from the PHB code and must be
  * built in.
  */
-bool cxl_pci_associate_default_context(struct pci_dev *dev, struct cxl_afu *afu)
+bool cxl_pci_associate_default_context(struct pci_dev *dev, struct cxl_afu *afu, int reserved_pe)
 {
 	bool ret;
 	struct cxl_calls *calls;
@@ -106,7 +106,7 @@ bool cxl_pci_associate_default_context(struct pci_dev *dev, struct cxl_afu *afu)
 	if (!calls)
 		return false;
 
-	ret = calls->cxl_pci_associate_default_context(dev, afu);
+	ret = calls->cxl_pci_associate_default_context(dev, afu, reserved_pe);
 
 	cxl_calls_put(calls);
 
