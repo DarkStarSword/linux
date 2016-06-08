@@ -41,7 +41,7 @@ static void cxl_teardown_msi_irqs(struct pci_dev *pdev)
 	 */
 }
 
-bool _cxl_pci_associate_default_context(struct pci_dev *dev, struct cxl_afu *afu)
+bool _cxl_pci_associate_default_context(struct pci_dev *dev, struct cxl_afu *afu, int reserved_pe)
 {
 	struct cxl_context *ctx;
 
@@ -49,7 +49,7 @@ bool _cxl_pci_associate_default_context(struct pci_dev *dev, struct cxl_afu *afu
 	 * Allocate a context to do cxl things too.  If we eventually do real
 	 * DMA ops, we'll need a default context to attach them to
 	 */
-	ctx = cxl_dev_context_init(dev);
+	ctx = cxl_dev_context_init_reserved_pe(dev, reserved_pe);
 	if (!ctx)
 		return false;
 	dev->dev.archdata.cxl_ctx = ctx;
