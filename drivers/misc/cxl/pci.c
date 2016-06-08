@@ -865,6 +865,7 @@ static int cxl_read_afu_descriptor(struct cxl_afu *afu, struct pci_dev *dev)
 
 	if (dev->vendor == PCI_VENDOR_ID_MELLANOX && dev->device == 0x1013) {
 		/* XXX: Hacks for CX4 */
+		afu->max_procs_virtualised = 0xffff;
 		afu->modes_supported |= CXL_MODE_DIRECTED;
 		afu->pp_size = 0;
 		afu->psa = 0;
