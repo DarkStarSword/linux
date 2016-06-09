@@ -42,6 +42,10 @@
 #include "mlx5_ib.h"
 #include "user.h"
 
+#ifdef CONFIG_MLX5_CAPI
+#include "capi.h"
+#endif
+
 enum {
 	MAX_PENDING_REG_MR = 8,
 };
@@ -1772,6 +1776,11 @@ struct ib_mw *mlx5_ib_alloc_mw(struct ib_pd *pd, enum ib_mw_type type,
 	if (type == IB_MW_TYPE_2)
 		in->seg.flags_pd |= cpu_to_be32(MLX5_MKEY_REMOTE_INVAL);
 	in->seg.qpn_mkey7_0 = cpu_to_be32(0xffffff << 8);
+
+#ifdef CONFIG_MLX5_CAPI
+	in->seg.pe_id =
+		cpu_to_be16(mlx5_capi_get_pe_id(pd->uobject->context));
+#endif
 
 	err = mlx5_core_create_mkey(dev->mdev, &mw->mmkey, in, sizeof(*in),
 				    NULL, NULL, NULL);

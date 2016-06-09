@@ -35,6 +35,10 @@
 #include <rdma/ib_umem_odp.h>
 #include "mlx5_ib.h"
 
+#ifdef CONFIG_MLX5_CAPI
+#include "capi.h"
+#endif
+
 /* @umem: umem object to scan
  * @addr: ib virtual address requested by the user
  * @count: number of PAGE_SIZE pages covered by umem
