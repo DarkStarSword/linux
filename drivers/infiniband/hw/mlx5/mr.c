@@ -835,20 +835,14 @@ static struct ib_umem *mr_umem_get_nopin(struct mlx5_ib_dev *dev,
 	struct ib_umem *umem = ib_umem_get_no_pin(pd->uobject->context,
 						  start, length,
 						  access_flags);
-	u64 base;
-
+	
 	*page_shift = ilog2(roundup_pow_of_two(length));
 	mlx5_ib_dbg(dev, "Actual page shift = %d\n", *page_shift);
+	
 	if ((*page_shift) >= MLX5_MKEY_MAX_PAGE_SHIFT)
 		*page_shift = MLX5_MKEY_MAX_PAGE_SHIFT;
 
-	base = start & (~((1 << (*page_shift)) -1));
-	*npages = (((start + length) - base) >> (*page_shift));
-
-	/* If span accross two pages, add a page */
-	if ((start + length) >= (base + (1 << (*page_shift))))
-		(*npages) ++;
-
+	*npages = calulate_npages_no_pin(start, length, *page_shift);
 	*ncont  = *npages;
 	*order  = ilog2(roundup_pow_of_two(*npages));
 
