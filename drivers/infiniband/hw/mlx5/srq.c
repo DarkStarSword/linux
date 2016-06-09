@@ -40,6 +40,10 @@
 #include "mlx5_ib.h"
 #include "user.h"
 
+#ifdef CONFIG_MLX5_CAPI
+#include "capi.h"
+#endif
+
 /* not supported currently */
 static int srq_signature;
 

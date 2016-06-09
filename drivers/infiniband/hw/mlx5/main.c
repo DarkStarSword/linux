@@ -51,6 +51,9 @@
 #include <linux/mlx5/fs.h>
 #include "user.h"
 #include "mlx5_ib.h"
+#ifdef CONFIG_MLX5_CAPI
+#include "capi.h"
+#endif
 
 #define DRIVER_NAME "mlx5_ib"
 #define DRIVER_VERSION "2.2-1"
@@ -68,6 +71,10 @@ MODULE_PARM_DESC(prof_sel, "profile selector. Deprecated here. Moved to module m
 static char mlx5_version[] =
 	DRIVER_NAME ": Mellanox Connect-IB Infiniband driver v"
 	DRIVER_VERSION " (" DRIVER_RELDATE ")\n";
+
+#ifdef CONFIG_MLX5_CAPI
+extern struct ib_dma_mapping_ops mlx5_dma_mapping_ops;
+#endif
 
 enum {
 	MLX5_ATOMIC_SIZE_QP_8BYTES = 1 << 3,
@@ -2387,6 +2394,13 @@ static void *mlx5_ib_add(struct mlx5_core_dev *mdev)
 	dev->ib_dev.map_mr_sg		= mlx5_ib_map_mr_sg;
 	dev->ib_dev.check_mr_status	= mlx5_ib_check_mr_status;
 	dev->ib_dev.get_port_immutable  = mlx5_port_immutable;
+
+#ifdef CONFIG_MLX5_CAPI
+	if (get_cxl_mode(mdev))
+		dev->ib_dev.dma_ops = &mlx5_dma_mapping_ops;
+#endif
+	
+
 	if (mlx5_core_is_pf(mdev)) {
 		dev->ib_dev.get_vf_config	= mlx5_ib_get_vf_config;
 		dev->ib_dev.set_vf_link_state	= mlx5_ib_set_vf_link_state;

@@ -7,6 +7,108 @@
 #include <linux/sched.h>
 #include <rdma/ib_umem.h> 
 
+static inline u64 mlx5_ib_dma_map_single(struct ib_device *dev,
+					 void *cpu_addr, size_t size,
+					 enum dma_data_direction direction)
+{
+	return (u64)cpu_addr;
+}
+
+static inline void mlx5_ib_dma_unmap_single(struct ib_device *dev,
+					    u64 addr, size_t size,
+					    enum dma_data_direction direction)
+{
+}
+
+static inline int mlx5_ib_dma_mapping_error(struct ib_device *dev, u64 dma_addr)
+{
+	return 0;
+}
+
+static inline u64 mlx5_ib_dma_map_page(struct ib_device *dev,
+				       struct page *page,
+				       unsigned long offset,
+				       size_t size,
+				       enum dma_data_direction direction)
+{
+	return (u64)(page_address(page)) + offset;	
+}
+
+static inline void mlx5_ib_dma_unmap_page(struct ib_device *dev,
+					  u64 addr, size_t size,
+					  enum dma_data_direction direction)
+{
+}
+
+static int mlx5_ib_dma_map_sg(struct ib_device *dev, struct scatterlist *sgl,
+			      int nents, enum dma_data_direction direction)
+{
+	struct scatterlist *sg;
+	u64 addr;
+	int i;
+	int ret = nents;
+
+	for_each_sg(sgl, sg, nents, i) {
+		addr = (u64) page_address(sg_page(sg));
+		sg->dma_address = addr + sg->offset;
+		sg->dma_length = sg->length;
+	}
+	return ret;
+}
+
+static void mlx5_ib_dma_unmap_sg(struct ib_device *dev,
+				 struct scatterlist *sg, int nents,
+				 enum dma_data_direction direction)
+{
+}
+
+static void mlx5_ib_dma_sync_single_for_cpu(struct ib_device *dev, u64 addr,
+					    size_t size, enum dma_data_direction dir)
+{
+}
+
+static void mlx5_ib_dma_sync_single_for_device(struct ib_device *dev, u64 addr,
+					       size_t size,
+					       enum dma_data_direction dir)
+{
+	return;
+}
+
+static void *mlx5_ib_dma_alloc_coherent(struct ib_device *dev, size_t size,
+					u64 *dma_handle, gfp_t flag)
+{
+	struct page *p;
+	void *addr = NULL;
+
+	p = alloc_pages(flag, get_order(size));
+	if (p)
+		addr = page_address(p);
+	if (dma_handle)
+		*dma_handle = (u64) addr;
+	return addr;
+}
+
+static void mlx5_ib_dma_free_coherent(struct ib_device *dev, size_t size,
+				      void *cpu_addr, u64 dma_handle)
+{
+	free_pages((unsigned long) cpu_addr, get_order(size));
+}
+
+/* dma_ops when the card is in CAPI mode */
+struct ib_dma_mapping_ops mlx5_dma_mapping_ops = {
+	.mapping_error = mlx5_ib_dma_mapping_error,
+	.map_single = mlx5_ib_dma_map_single,
+	.unmap_single = mlx5_ib_dma_unmap_single,
+	.map_page = mlx5_ib_dma_map_page,
+	.unmap_page = mlx5_ib_dma_unmap_page,
+	.map_sg = mlx5_ib_dma_map_sg,
+	.unmap_sg = mlx5_ib_dma_unmap_sg,
+	.sync_single_for_cpu = mlx5_ib_dma_sync_single_for_cpu,
+	.sync_single_for_device = mlx5_ib_dma_sync_single_for_device,
+	.alloc_coherent = mlx5_ib_dma_alloc_coherent,
+	.free_coherent = mlx5_ib_dma_free_coherent
+};
+
 struct ib_umem *ib_umem_get_no_pin(struct ib_ucontext *context,
 				   unsigned long addr,
 				   size_t size,
