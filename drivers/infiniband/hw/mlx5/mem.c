@@ -160,13 +160,11 @@ static void mlx5_ib_populate_pas_capi(struct mlx5_ib_dev *dev,
 	base &= ~((1 << page_shift) -1);
 
 	if (!pinned) {
-		npages  = (((umem->address + umem->length) - base) >> page_shift);
-		/* If span accross two pages, add a page */
-		if ((umem->address + umem->length) >=
-			(base + (1 << page_shift)))
-			npages ++;
-
-		cur    = base | access_flags;
+		npages = calulate_npages_no_pin(umem->address,
+						umem->length,
+						page_shift);
+		
+		cur = base | access_flags;
 		for (i = 0; i < npages; i++) {
 			pas[i] = cpu_to_be64(cur);
 			cur   += (1 << page_shift);
