@@ -744,7 +744,6 @@ static int dma_map_mr_pas(struct mlx5_ib_dev *dev, struct ib_umem *umem,
 			  __be64 **mr_pas, dma_addr_t *dma)
 {
 	__be64 *pas;
-	struct device *ddev = dev->ib_dev.dma_device;
 
 	/*
 	 * UMR copies MTTs in units of MLX5_UMR_MTT_ALIGNMENT bytes.
@@ -759,7 +758,7 @@ static int dma_map_mr_pas(struct mlx5_ib_dev *dev, struct ib_umem *umem,
 	pas = PTR_ALIGN(*mr_pas, MLX5_UMR_ALIGN);
 
 #ifdef CONFIG_MLX5_CAPI
-	mlx5_ib_populate_pas(dev, umem, page_shift, pas, MLX5_IB_MTT_PRESENT, 0); /* Huy todo dma_map_single */
+	mlx5_ib_populate_pas(dev, umem, page_shift, pas, MLX5_IB_MTT_PRESENT, 0);
 #else
 	mlx5_ib_populate_pas(dev, umem, page_shift, pas, MLX5_IB_MTT_PRESENT);
 #endif
@@ -767,8 +766,8 @@ static int dma_map_mr_pas(struct mlx5_ib_dev *dev, struct ib_umem *umem,
 	/* Clear padding after the actual pages. */
 	memset(pas + npages, 0, *size - npages * sizeof(u64));
 
-	*dma = dma_map_single(ddev, pas, *size, DMA_TO_DEVICE);
-	if (dma_mapping_error(ddev, *dma)) {
+	*dma = ib_dma_map_single(&dev->ib_dev, pas, *size, DMA_TO_DEVICE);
+	if (ib_dma_mapping_error(&dev->ib_dev, *dma)) {
 		kfree(*mr_pas);
 		return -ENOMEM;
 	}
@@ -928,7 +927,6 @@ static struct mlx5_ib_mr *reg_umr(struct ib_pd *pd, struct ib_umem *umem,
 				  int page_shift, int order, int access_flags)
 {
 	struct mlx5_ib_dev *dev = to_mdev(pd->device);
-	struct device *ddev = dev->ib_dev.dma_device;
 	struct umr_common *umrc = &dev->umrc;
 	struct mlx5_ib_umr_context umr_context;
 	struct mlx5_umr_wr umrwr = {};
@@ -988,7 +986,7 @@ static struct mlx5_ib_mr *reg_umr(struct ib_pd *pd, struct ib_umem *umem,
 
 unmap_dma:
 	up(&umrc->sem);
-	dma_unmap_single(ddev, dma, size, DMA_TO_DEVICE);
+	ib_dma_unmap_single(&dev->ib_dev, dma, size, DMA_TO_DEVICE);
 
 	kfree(mr_pas);
 
@@ -1006,7 +1004,6 @@ int mlx5_ib_update_mtt(struct mlx5_ib_mr *mr, u64 start_page_index, int npages,
 		       int zap)
 {
 	struct mlx5_ib_dev *dev = mr->dev;
-	struct device *ddev = dev->ib_dev.dma_device;
 	struct umr_common *umrc = &dev->umrc;
 	struct mlx5_ib_umr_context umr_context;
 	struct ib_umem *umem = mr->umem;
@@ -1051,8 +1048,8 @@ int mlx5_ib_update_mtt(struct mlx5_ib_mr *mr, u64 start_page_index, int npages,
 		memset(pas, 0, size);
 	}
 	pages_iter = size / sizeof(u64);
-	dma = dma_map_single(ddev, pas, size, DMA_TO_DEVICE);
-	if (dma_mapping_error(ddev, dma)) {
+	dma = ib_dma_map_single(&dev->ib_dev, pas, size, DMA_TO_DEVICE);
+	if (ib_dma_mapping_error(&dev->ib_dev, dma)) {
 		mlx5_ib_err(dev, "unable to map DMA during MTT update.\n");
 		err = -ENOMEM;
 		goto free_pas;
@@ -1061,7 +1058,7 @@ int mlx5_ib_update_mtt(struct mlx5_ib_mr *mr, u64 start_page_index, int npages,
 	for (pages_mapped = 0;
 	     pages_mapped < pages_to_map && !err;
 	     pages_mapped += pages_iter, start_page_index += pages_iter) {
-		dma_sync_single_for_cpu(ddev, dma, size, DMA_TO_DEVICE);
+		ib_dma_sync_single_for_cpu(&dev->ib_dev, dma, size, DMA_TO_DEVICE);
 
 		npages = min_t(size_t,
 			       pages_iter,
@@ -1076,7 +1073,7 @@ int mlx5_ib_update_mtt(struct mlx5_ib_mr *mr, u64 start_page_index, int npages,
 			memset(pas + npages, 0, size - npages * sizeof(u64));
 		}
 
-		dma_sync_single_for_device(ddev, dma, size, DMA_TO_DEVICE);
+		ib_dma_sync_single_for_device(&dev->ib_dev, dma, size, DMA_TO_DEVICE);
 
 		mlx5_ib_init_umr_context(&umr_context);
 
@@ -1112,7 +1109,7 @@ int mlx5_ib_update_mtt(struct mlx5_ib_mr *mr, u64 start_page_index, int npages,
 		}
 		up(&umrc->sem);
 	}
-	dma_unmap_single(ddev, dma, size, DMA_TO_DEVICE);
+	ib_dma_unmap_single(&dev->ib_dev, dma, size, DMA_TO_DEVICE);
 
 free_pas:
 	if (!use_emergency_buf)
@@ -1320,7 +1317,6 @@ static int rereg_umr(struct ib_pd *pd, struct mlx5_ib_mr *mr, u64 virt_addr,
 		     int access_flags, int flags)
 {
 	struct mlx5_ib_dev *dev = to_mdev(pd->device);
-	struct device *ddev = dev->ib_dev.dma_device;
 	struct mlx5_ib_umr_context umr_context;
 	struct ib_send_wr *bad;
 	struct mlx5_umr_wr umrwr = {};
@@ -1377,7 +1373,7 @@ static int rereg_umr(struct ib_pd *pd, struct mlx5_ib_mr *mr, u64 virt_addr,
 
 	up(&umrc->sem);
 	if (flags & IB_MR_REREG_TRANS) {
-		dma_unmap_single(ddev, dma, size, DMA_TO_DEVICE);
+		ib_dma_unmap_single(&dev->ib_dev, dma, size, DMA_TO_DEVICE);
 		kfree(mr_pas);
 	}
 	return err;
@@ -1496,9 +1492,9 @@ mlx5_alloc_priv_descs(struct ib_device *device,
 
 	mr->descs = PTR_ALIGN(mr->descs_alloc, MLX5_UMR_ALIGN);
 
-	mr->desc_map = dma_map_single(device->dma_device, mr->descs,
+	mr->desc_map = ib_dma_map_single(device, mr->descs,
 				      size, DMA_TO_DEVICE);
-	if (dma_mapping_error(device->dma_device, mr->desc_map)) {
+	if (ib_dma_mapping_error(device, mr->desc_map)) {
 		ret = -ENOMEM;
 		goto err;
 	}
@@ -1517,7 +1513,7 @@ mlx5_free_priv_descs(struct mlx5_ib_mr *mr)
 		struct ib_device *device = mr->ibmr.device;
 		int size = mr->max_descs * mr->desc_size;
 
-		dma_unmap_single(device->dma_device, mr->desc_map,
+		ib_dma_unmap_single(device, mr->desc_map,
 				 size, DMA_TO_DEVICE);
 		kfree(mr->descs_alloc);
 		mr->descs = NULL;
