@@ -173,11 +173,15 @@ int mlx5_capi_initialize(struct mlx5_core_dev *dev,
 		goto out;
 
 	if (!capi->cxl_mode) {
-		/* Huy FIXME add code to determine proper CPU before calling the switch */
-		/* Huy FIXME the card is in PCI mode and we don't want to do CAPI (from NVConfig) */
+		/* Huy to do Query CAPI switch capability before do wth switching */
+		/* If cannot be switch, then continue to operate in PCIe mode */
 		if (is_function0)
-			cxl_check_and_switch_mode(pdev, CXL_BIMODE_CXL, 0, CXL_QUIRK_CX4);
-		
+			/* If switch to CAPI fails, return 0 and stays in PCIe mode */
+			if (cxl_check_and_switch_mode(pdev, CXL_BIMODE_CXL, 0, CXL_QUIRK_CX4)) {
+				err = 0;
+				goto out;
+			}
+
 		/* Quit our driver to move the card into CXL mode */
 		err = -EPERM;
 		goto out;
