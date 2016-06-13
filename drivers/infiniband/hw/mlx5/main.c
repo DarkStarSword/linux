@@ -565,6 +565,11 @@ static int mlx5_ib_query_device(struct ib_device *ibdev,
 	if (MLX5_CAP_GEN(mdev, pg))
 		props->device_cap_flags |= IB_DEVICE_ON_DEMAND_PAGING;
 	props->odp_caps = dev->odp_caps;
+#ifdef CONFIG_MLX5_CAPI
+	/* Disable ODP if CAPI is on */
+	if (get_cxl_mode(mdev))
+		props->device_cap_flags &= (~IB_DEVICE_ON_DEMAND_PAGING);
+#endif
 #endif
 
 	if (MLX5_CAP_GEN(mdev, cd))
