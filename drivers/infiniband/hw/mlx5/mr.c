@@ -845,8 +845,8 @@ static struct ib_umem *mr_umem_get_nopin(struct mlx5_ib_dev *dev,
 	if ((*page_shift) >= MLX5_MKEY_MAX_PAGE_SHIFT)
 		*page_shift = MLX5_MKEY_MAX_PAGE_SHIFT;
 
-	*npages = calulate_npages_no_pin(start, length, *page_shift);
-	*ncont  = *npages;
+	*ncont = calulate_npages_no_pin(start, length, *page_shift);
+	*npages = calulate_npages_no_pin(start, length, PAGE_SHIFT);
 	*order  = ilog2(roundup_pow_of_two(*npages));
 
 	return umem;
@@ -1200,9 +1200,7 @@ static void set_mr_fileds(struct mlx5_ib_dev *dev, struct mlx5_ib_mr *mr,
 			  int npages, u64 length, int access_flags)
 {
 	mr->npages = npages;
-#ifndef CONFIG_MLX5_CAPI /* Huy ask Eli */
 	atomic_add(npages, &dev->mdev->priv.reg_pages);
-#endif
 	mr->ibmr.lkey = mr->mmkey.key;
 	mr->ibmr.rkey = mr->mmkey.key;
 	mr->ibmr.length = length;
@@ -1460,9 +1458,7 @@ int mlx5_ib_rereg_user_mr(struct ib_mr *ib_mr, int flags, u64 start,
 		mr->access_flags = access_flags;
 
 	if (flags & IB_MR_REREG_TRANS) {
-#ifndef CONFIG_MLX5_CAPI /* Huy ask Eli */
 		atomic_sub(mr->npages, &dev->mdev->priv.reg_pages);
-#endif
 		set_mr_fileds(dev, mr, npages, len, access_flags);
 		mr->mmkey.iova = addr;
 		mr->mmkey.size = len;
@@ -1604,9 +1600,7 @@ int mlx5_ib_dereg_mr(struct ib_mr *ibmr)
 		ib_umem_release(umem);
 #endif
 
-#ifndef CONFIG_MLX5_CAPI /* Huy ask Eli */
 		atomic_sub(npages, &dev->mdev->priv.reg_pages);
-#endif
 	}
 
 	return 0;

@@ -155,7 +155,7 @@ static void mlx5_ib_populate_pas_capi(struct mlx5_ib_dev *dev,
 	int len;
 	struct scatterlist *sg;
 	int entry;
-	int npages;
+	int ncont;
 
 	u64 cur2, base2; /*not need*/
 
@@ -164,12 +164,12 @@ static void mlx5_ib_populate_pas_capi(struct mlx5_ib_dev *dev,
 	base &= ~((1 << page_shift) -1);
 
 	if (!pinned) {
-		npages = calulate_npages_no_pin(umem->address,
+		ncont = calulate_npages_no_pin(umem->address,
 						umem->length,
 						page_shift);
 		
 		cur = base | access_flags;
-		for (i = 0; i < npages; i++) {
+		for (i = 0; i < ncont; i++) {
 			pas[i] = cpu_to_be64(cur);
 			cur   += (1 << page_shift);
 			mlx5_ib_dbg(dev, "non pinned pas[%d] = 0x%llx\n",
