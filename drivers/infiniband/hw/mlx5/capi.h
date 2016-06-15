@@ -21,6 +21,7 @@ struct ib_umem *ib_umem_get_no_pin(struct ib_ucontext *context,
 void ib_umem_release_no_pin(struct ib_umem *umem);
 int mlx5_capi_get_default_pe_id(struct ib_pd *pd);
 int mlx5_capi_get_pe_id(struct ib_ucontext *ibcontext);
+int mlx5_capi_get_pe_id_from_pd(struct ib_pd *pd);
 int mlx5_capi_allocate_cxl_context(struct ib_ucontext *ibcontext,
 				   struct mlx5_ib_dev *dev);
 int mlx5_capi_release_cxl_context(struct ib_ucontext *ibcontext);

@@ -6,6 +6,7 @@
 #include <misc/cxl.h>
 #include <linux/sched.h>
 #include <rdma/ib_umem.h> 
+#include "capi.h"
 
 static inline u64 mlx5_ib_dma_map_single(struct ib_device *dev,
 					 void *cpu_addr, size_t size,
@@ -132,6 +133,18 @@ struct ib_umem *ib_umem_get_no_pin(struct ib_ucontext *context,
 void ib_umem_release_no_pin(struct ib_umem *umem)
 {
 	kfree(umem);
+}
+
+int mlx5_capi_get_pe_id_from_pd(struct ib_pd *pd)
+{
+	int pe_id;
+
+	if (pd->uobject)
+		pe_id = mlx5_capi_get_pe_id(pd->uobject->context);
+	else
+		pe_id = mlx5_capi_get_default_pe_id(pd);
+
+	return pe_id;
 }
 
 int mlx5_capi_get_default_pe_id(struct ib_pd *pd)

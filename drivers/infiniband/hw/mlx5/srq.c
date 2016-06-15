@@ -278,7 +278,7 @@ mlx5_ib_create_srq_wrapper(struct ib_pd *pd,
 			   struct ib_udata *udata)
 {
 	return mlx5_ib_create_srq(pd, init_attr, udata,
-				  mlx5_capi_get_pe_id(pd->uobject->context));
+				  mlx5_capi_get_pe_id_from_pd(pd));
 }
 
 struct ib_srq *mlx5_ib_create_srq(struct ib_pd *pd,

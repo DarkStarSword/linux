@@ -2852,7 +2852,7 @@ static void set_reg_mkey_segment(struct mlx5_mkey_seg *seg, struct ib_send_wr *w
 
 #ifdef CONFIG_MLX5_CAPI
 	seg->pe_id =
-		cpu_to_be16(mlx5_capi_get_pe_id(umrwr->pd->uobject->context));
+		cpu_to_be16(mlx5_capi_get_pe_id_from_pd(umrwr->pd));
 #endif
 }
 
