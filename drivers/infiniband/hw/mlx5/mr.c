@@ -1168,7 +1168,7 @@ static struct mlx5_ib_mr *reg_create(struct ib_mr *ibmr, struct ib_pd *pd,
 
 #ifdef CONFIG_MLX5_CAPI
 	in->seg.pe_id =
-		cpu_to_be16(mlx5_capi_get_pe_id(pd->uobject->context));
+		cpu_to_be16(mlx5_capi_get_pe_id_from_pd(pd));
 #endif
 
 	err = mlx5_core_create_mkey(dev->mdev, &mr->mmkey, in, inlen, NULL,
@@ -1687,7 +1687,7 @@ struct ib_mr *mlx5_ib_alloc_mr(struct ib_pd *pd,
 
 #ifdef CONFIG_MLX5_CAPI
 	in->seg.pe_id =
-		cpu_to_be16(mlx5_capi_get_pe_id(pd->uobject->context));
+		cpu_to_be16(mlx5_capi_get_pe_id_from_pd(pd));
 #endif
 
 	err = mlx5_core_create_mkey(dev->mdev, &mr->mmkey, in, sizeof(*in),
@@ -1769,7 +1769,7 @@ struct ib_mw *mlx5_ib_alloc_mw(struct ib_pd *pd, enum ib_mw_type type,
 
 #ifdef CONFIG_MLX5_CAPI
 	in->seg.pe_id =
-		cpu_to_be16(mlx5_capi_get_pe_id(pd->uobject->context));
+		cpu_to_be16(mlx5_capi_get_pe_id_from_pd(pd));
 #endif
 
 	err = mlx5_core_create_mkey(dev->mdev, &mw->mmkey, in, sizeof(*in),
