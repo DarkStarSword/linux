@@ -70,6 +70,11 @@ struct cxl_context *_cxl_get_context(struct pci_dev *dev)
 }
 /* exported via cxl_base */
 
+struct cxl_context *cxl_next_context(struct cxl_context *ctx)
+{
+	return list_next_entry(ctx, list);
+}
+
 int cxl_release_context(struct cxl_context *ctx)
 {
 	if (ctx->status >= STARTED)
@@ -409,3 +414,19 @@ ssize_t cxl_read_adapter_vpd(struct pci_dev *dev, void *buf, size_t count)
 	return cxl_ops->read_adapter_vpd(afu->adapter, buf, count);
 }
 EXPORT_SYMBOL_GPL(cxl_read_adapter_vpd);
+
+int cxl_set_max_irqs_per_process(struct pci_dev *dev, int irqs)
+{
+	struct cxl_afu *afu = cxl_pci_to_afu(dev);
+	if (IS_ERR(afu))
+		return -ENODEV;
+
+	if (afu->adapter->user_irqs > irqs)
+		return -EINVAL;
+
+	/* Limit user_irqs to prevent the user increasing this via sysfs */
+	afu->adapter->user_irqs = irqs;
+	afu->irqs_max = irqs;
+
+	return 0;
+}

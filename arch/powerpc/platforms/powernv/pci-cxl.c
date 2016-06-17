@@ -29,10 +29,8 @@ void pnv_cxl_enable_phb_kernel2_api(struct pci_dev *dev, bool enable, int quirks
 	if (enable) {
 		phb->flags |= PNV_PHB_FLAG_CXL;
 		hose->controller_ops = pnv_cxl_cx4_ioda_controller_ops;
-		if (quirks & CXL_QUIRK_CX4)
-			phb->flags |= PNV_PHB_FLAG_CXL_QUIRK_CX4;
 	} else {
-		phb->flags &= ~(PNV_PHB_FLAG_CXL | PNV_PHB_FLAG_CXL_QUIRK_CX4);
+		phb->flags &= ~PNV_PHB_FLAG_CXL;
 		hose->controller_ops = pnv_pci_ioda_controller_ops;
 	}
 }
@@ -83,37 +81,28 @@ bool pnv_cxl_enable_device_hook(struct pci_dev *dev, struct pnv_phb *phb)
 }
 
 /*
- * This is a special version of pnv_setup_msi_irqs specifially for the Mellanox
- * CX4 card while in cxl mode.
+ * This is a special version of pnv_setup_msi_irqs for cards in cxl mode. This
+ * function handles setting up the IVTE entries for the XSL to use.
  *
- * When the card is in normal PCI mode it will use an MSI-X table as usual, but
- * while in cxl mode the card routes interrupts through the cxl XSL
- * (Translation Service Layer) instead, which still sends out MSI-X interrupts
- * on the bus, but uses the cxl mechanism to determine the address and data to
- * use for the interrupt instead of the MSI-X table.
+ * We are currently not filling out the MSIX table, since the only currently
+ * supported adapter (CX4) uses a custom MSIX table format in cxl mode and it
+ * is up to their driver to fill that out.
  *
- * For this particular card in this mode, the MSI-X table is still used, but
- * instead of defining the address and data to use on the PCI bus, it defines
- * the cxl PE ID (Process Element ID, not to be confused with Partitionable
- * Endpoint) and AFU interrupt number to send to the XSL. The XSL will then
- * look up the IVTE offset and ranges for the corresponding PE entry to map
- * that back to an address to use for the MSI packet (data is always 0 for cxl
- * interrupts) and therefore the hwirq number.
- *
- * This function handles setting up the IVTE entries for the XSL to use and the
- * MSI-X table for the CX4 to use.
+ * In the future we may fill out the MSIX table (and change the IVTE entries to
+ * be an index to the MSIX table) for adapters implementing the Full MSI-X mode
+ * described in the CAIA.
  */
 int pnv_cxl_cx4_setup_msi_irqs(struct pci_dev *pdev, int nvec, int type)
 {
 	struct pci_controller *hose = pci_bus_to_host(pdev->bus);
 	struct pnv_phb *phb = hose->private_data;
 	struct msi_desc *entry;
-	struct msi_msg msg;
 	struct cxl_context *ctx;
-	int hwirq;
+	int remaining;
 	unsigned int virq;
-	int rc;
 	int afu_irq = 1;
+	int hwirq;
+	int rc;
 
 	if (WARN_ON(!phb) || !phb->msi_bmp.bitmap)
 		return -ENODEV;
@@ -144,12 +133,26 @@ int pnv_cxl_cx4_setup_msi_irqs(struct pci_dev *pdev, int nvec, int type)
 	 * PHB has to be dedicated to the card in cxl mode, let's see if it's a
 	 * problem in practice before trying to do anything heroic.
 	 */
-	rc = cxl_allocate_afu_irqs(ctx, nvec);
-	if (rc) {
-		pr_warn("%s: Failed to find enough free MSIs\n", pci_name(pdev));
-		return rc;
+	remaining = nvec;
+	while (remaining > 0) {
+		rc = cxl_allocate_afu_irqs(ctx, min(remaining, ctx->afu->max_irqs));
+		if (rc) {
+			pr_warn("%s: Failed to find enough free MSIs\n", pci_name(pdev));
+			return rc;
+		}
+		remaining -= ctx->afu->max_irqs;
+
+		if (remaining > 0) {
+			new_ctx = cxl_dev_context_init(pdev);
+			if (!new_ctx) {
+				// FIXME
+			}
+			list_add(new_ctx->list, ctx->list);
+			ctx = new_ctx;
+		}
 	}
 
+	ctx = cxl_get_context(pdev);
 	for_each_pci_msi_entry(entry, pdev) {
 		if (!entry->msi_attrib.is_64 && !phb->msi32_support) {
 			pr_warn("%s: Supports only 64-bit MSIs\n",
@@ -172,30 +175,15 @@ int pnv_cxl_cx4_setup_msi_irqs(struct pci_dev *pdev, int nvec, int type)
 			return rc;
 		}
 
-		if (phb->flags & PNV_PHB_FLAG_CXL_QUIRK_CX4) {
-			/*
-			 * This is a quirk specific to the CX4 card while in
-			 * cxl mode, which uses the MSI-X table to route
-			 * interrupts to the XSL instead of over the PCI bus.
-			 *
-			 * Using an unconditional swab32 here as
-			 * pci_write_msi_msg will write these values as
-			 * little-endian, but the card expects these to be in
-			 * big-endian.
-			 */
-			msg.address_hi = 0;
-			msg.address_lo = 0;
-			msg.data = swab32((afu_irq << 28) | cxl_process_element(ctx));
-			dev_info(&pdev->dev, "MSIX[%i] PE=%i LISN=%i msg.address_lo=%08x\n",
-					afu_irq, cxl_process_element(ctx), afu_irq, msg.address_lo);
-		}
-
 		irq_set_msi_desc(virq, entry);
-		pci_write_msi_msg(virq, &msg);
 
 		afu_irq++;
+		if (afu_irq > ctx->afu->max_irqs) {
+			// TODO: Use symbol_request / symbol_get to clean up getting symbols
+			ctx = cxl_next_context(ctx);
+			afu_irq = 1;
+		}
 	}
-	WARN_ON(afu_irq != nvec + 1);
 	return 0;
 }
 

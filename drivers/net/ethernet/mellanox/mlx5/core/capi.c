@@ -54,6 +54,140 @@ mlx5_capi_find_function0_dev(struct pci_dev *pdev)
 	return NULL;
 }
 
+static int
+_mlx5_enable_capi_irqs(struct cxl_context *ctx, struct pci_dev *pdev,
+		       struct msix_entry *entries, int nvec)
+{
+	struct msi_desc *entry;
+	struct msi_msg msg;
+	int hwirq;
+	unsigned int virq;
+	int rc;
+	int afu_irq = 1;
+
+	rc = cxl_allocate_afu_irqs(ctx, nvec);
+	if (rc) {
+		pr_warn("%s: Failed to find enough free MSIs\n", pci_name(pdev));
+		return rc;
+	}
+
+	for_each_pci_msi_entry(entry, pdev) {
+		hwirq = cxl_afu_irq_to_hwirq(ctx, afu_irq);
+		virq = irq_create_mapping(NULL, hwirq);
+		if (virq == NO_IRQ) {
+			pr_warn("%s: Failed to map cxl mode CX4 MSI to linux irq\n",
+				pci_name(pdev));
+			return -ENOMEM;
+		}
+
+		rc = pnv_cxl_ioda_msi_setup(pdev, hwirq, virq);
+		if (rc) {
+			pr_warn("%s: Failed to setup cxl mode CX4 MSI\n", pci_name(pdev));
+			irq_dispose_mapping(virq);
+			return rc;
+		}
+
+		/*
+		 * This is a quirk specific to the CX4 card while in
+		 * cxl mode, which uses the MSI-X table to route
+		 * interrupts to the XSL instead of over the PCI bus.
+		 *
+		 * Using an unconditional swab32 here as
+		 * pci_write_msi_msg will write these values as
+		 * little-endian, but the card expects these to be in
+		 * big-endian.
+		 */
+		msg.address_hi = 0;
+		msg.address_lo = 0;
+		msg.data = swab32((afu_irq << 28) | cxl_process_element(ctx));
+		dev_info(&pdev->dev, "MSIX[%i] PE=%i LISN=%i msg.address_lo=%08x\n",
+				afu_irq, cxl_process_element(ctx), afu_irq, msg.address_lo);
+
+		irq_set_msi_desc(virq, entry);
+		pci_write_msi_msg(virq, &msg);
+
+		afu_irq++;
+	}
+	WARN_ON(afu_irq != nvec + 1);
+	return nvec;
+}
+
+/*
+ * In cxl mode, the CX4 uses a custom MSIX table format with the PE and LISN to
+ * route interrupts to the XSL instead of over the PCI bus.
+ */
+int mlx5_configure_msix_table_capi(struct pci_dev *pdev)
+{
+	struct cxl_context *ctx;
+	struct msi_desc *entry;
+	unsigned int virq;
+	int hwirq;
+
+	ctx = cxl_get_context(pdev);
+
+	for_each_pci_msi_entry(entry, pdev) {
+		hwirq = cxl_afu_irq_to_hwirq(ctx, afu_irq);
+		virq = irq_find_mapping(NULL, hwirq);
+
+		/*
+		 * Using an unconditional swab32 here as
+		 * pci_write_msi_msg will write these values as
+		 * little-endian, but the card expects these to be in
+		 * big-endian.
+		 */
+		msg.address_hi = 0;
+		msg.address_lo = 0;
+		msg.data = swab32((afu_irq << 28) | cxl_process_element(ctx));
+		dev_info(&pdev->dev, "MSIX[%i] PE=%i LISN=%i msg.address_lo=%08x\n",
+				afu_irq, cxl_process_element(ctx), afu_irq, msg.address_lo);
+
+		pci_write_msi_msg(virq, &msg);
+
+		afu_irq++;
+		if (afu_irq > ctx->afu->max_irqs) {
+			ctx = list_next_entry(ctx, list);
+			afu_irq = 1;
+		}
+	}
+}
+
+/*
+ * The CX4 is wired up such that only 4 bits of the LISN can be passed to the
+ * XSL, and since LISN 0 is invalid this limits it to 15 interrupts per PE.
+ * Therefore, to support more interrupts, multiple PEs must be used.
+ */
+int mlx5_enable_capi_irqs(struct pci_dev *pdev, struct msix_entry *entries, int nvec)
+{
+	struct cxl_context *ctx;
+	int remaining = nvec;
+	int rc;
+
+	ctx = cxl_get_contect(pdev);
+	if (WARN_ON(!ctx))
+		return -ENODEV;
+	rc = _mlx5_enable_capi_irqs(ctx, pdev, entries, min(remaining, 15));
+	if (rc < 0)
+		return rc;
+	remaining -= 15;
+
+	for (; remaining > 0; remaining -= 15) {
+		ctx = cxl_dev_context_init(pdev);
+		rc = _mlx5_enable_capi_irqs(ctx, pdev, entries, min(remaining, 15));
+		if (rc < 0) {
+			cxl_release_context(ctx);
+			/*
+			 * FIXME: Clean up other contexts, or if already have
+			 * >= min return that
+			 */
+			return rc;
+		}
+		cxl_start_context(ctx, 0, NULL);
+	}
+
+	return nvec;
+}
+
+
 int mlx5_capi_cleanup(struct mlx5_core_dev *dev,
 		      struct pci_dev *pdev)
 {

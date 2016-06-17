@@ -78,8 +78,7 @@ struct pnv_ioda_pe {
 };
 
 #define PNV_PHB_FLAG_EEH		(1 << 0)
-#define PNV_PHB_FLAG_CXL		(1 << 1) /* PHB supporting the cxl kernel2 api */
-#define PNV_PHB_FLAG_CXL_QUIRK_CX4	(1 << 2) /* Mellanox CX4 card in cxl mode */
+#define PNV_PHB_FLAG_CXL		(1 << 1) /* Real PHB supporting the cxl kernel API */
 
 struct pnv_phb {
 	struct pci_controller	*hose;
