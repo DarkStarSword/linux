@@ -5,10 +5,13 @@ static inline int calulate_npages_no_pin(u64 start, u64 length, int page_shift)
 	u64 base;
 
 	base = start & (~((1 << (page_shift)) -1));
-	npages = (((start + length) - base) >> (page_shift)) + 1;
+	npages = (((start + length) - base) >> (page_shift));
+
+	if (npages == 0)
+		npages = 1;
 
 	/* If span accross last page boundary, add a page */
-	if ((start + length) >= (base + (npages << page_shift)))
+	if ((start + length) > (base + (npages << page_shift)))
 		npages ++;
 
 	return npages;

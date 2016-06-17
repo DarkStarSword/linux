@@ -845,6 +845,9 @@ static struct ib_umem *mr_umem_get_nopin(struct mlx5_ib_dev *dev,
 	if ((*page_shift) >= MLX5_MKEY_MAX_PAGE_SHIFT)
 		*page_shift = MLX5_MKEY_MAX_PAGE_SHIFT;
 
+	if ((*page_shift) < PAGE_SHIFT)
+		*page_shift = PAGE_SHIFT;
+
 	*ncont = calulate_npages_no_pin(start, length, *page_shift);
 	*npages = calulate_npages_no_pin(start, length, PAGE_SHIFT);
 	*order  = ilog2(roundup_pow_of_two(*npages));
