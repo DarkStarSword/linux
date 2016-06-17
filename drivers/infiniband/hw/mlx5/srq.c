@@ -360,10 +360,18 @@ struct ib_srq *mlx5_ib_create_srq(struct ib_pd *pd,
 	in->ctx.flags_xrcd = cpu_to_be32((flgs & 0xFF000000) | (xrcdn & 0xFFFFFF));
 
 	in->ctx.pd = cpu_to_be32(to_mpd(pd)->pdn);
-	in->ctx.db_record = cpu_to_be64(srq->db.dma);
+
 #ifdef CONFIG_MLX5_CAPI
 	in->ctx.pe_id = cpu_to_be16(pe_id);
-#endif
+
+	if (get_cxl_mode(dev->mdev))
+		in->ctx.db_record = cpu_to_be64(srq->db.virt_addr);
+	else	
+		in->ctx.db_record = cpu_to_be64(srq->db.dma);
+#else
+	in->ctx.db_record = cpu_to_be64(srq->db.dma);
+#endif	
+
 	err = mlx5_core_create_srq(dev->mdev, &srq->msrq, in, inlen, is_xrc);
 	kvfree(in);
 	if (err) {
