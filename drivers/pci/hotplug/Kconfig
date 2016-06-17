@@ -117,6 +117,7 @@ config HOTPLUG_PCI_POWERNV
 	tristate "PowerPC PowerNV PCI Hotplug driver"
 	depends on PPC_POWERNV && EEH
 	select OF_DYNAMIC
+	select HOTPLUG_PCI_POWERNV_BASE
 	help
 	  Say Y here if you run PowerPC PowerNV platform that supports
 	  PCI Hotplug
