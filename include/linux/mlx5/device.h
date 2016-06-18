@@ -232,6 +232,7 @@ enum {
 	MLX5_MKEY_MASK_A		= 1ull << 21,
 	MLX5_MKEY_MASK_SMALL_FENCE	= 1ull << 23,
 	MLX5_MKEY_MASK_FREE		= 1ull << 29,
+	MLX5_MKEY_MASK_PEID		= 1ull << 34,
 };
 
 enum {
@@ -505,7 +506,12 @@ struct health_buffer {
 struct mlx5_init_seg {
 	__be32			fw_rev;
 	__be32			cmdif_rev_fw_sub;
-	__be32			rsvd0[2];
+#ifdef CONFIG_MLX5_CAPI
+	__be32			rsvd0[1];
+	__be32                  direct_default_pe;
+#else
+	__be32                  rsvd0[2];
+#endif
 	__be32			cmdq_addr_h;
 	__be32			cmdq_addr_l_sz;
 	__be32			cmd_dbell;
@@ -856,7 +862,12 @@ struct mlx5_srq_ctx {
 	__be32			pgoff_cqn;
 	u8			rsvd1[4];
 	u8			log_pg_sz;
-	u8			rsvd2[7];
+#ifdef CONFIG_MLX5_CAPI
+	u8			rsvd2[5];
+	__be16			pe_id;
+#else
+	u8                      rsvd2[7];
+#endif
 	__be32			pd;
 	__be16			lwm;
 	__be16			wqe_cnt;
@@ -1090,6 +1101,10 @@ enum {
 	MLX5_MKEY_STATUS_FREE = 1 << 6,
 };
 
+#ifdef CONFIG_MLX5_CAPI
+#define MLX5_MKEY_MAX_PAGE_SHIFT 30 /* 1GB page */
+#endif
+
 struct mlx5_mkey_seg {
 	/* This is a two bit field occupying bits 31-30.
 	 * bit 31 is always 0,
@@ -1107,7 +1122,12 @@ struct mlx5_mkey_seg {
 	__be32		bsfs_octo_size;
 	u8		rsvd2[16];
 	__be32		xlt_oct_size;
-	u8		rsvd3[3];
+#ifdef CONFIG_MLX5_CAPI
+	__be16          pe_id;
+	u8		rsvd3[1];
+#else
+	u8              rsvd3[3];
+#endif
 	u8		log2_page_size;
 	u8		rsvd4[4];
 };

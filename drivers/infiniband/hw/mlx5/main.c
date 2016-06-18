@@ -54,6 +54,9 @@
 #include <linux/mlx5/fs.h>
 #include "user.h"
 #include "mlx5_ib.h"
+#ifdef CONFIG_MLX5_CAPI
+#include "capi.h"
+#endif
 
 #define DRIVER_NAME "mlx5_ib"
 #define DRIVER_VERSION "2.2-1"
@@ -71,6 +74,10 @@ MODULE_PARM_DESC(prof_sel, "profile selector. Deprecated here. Moved to module m
 static char mlx5_version[] =
 	DRIVER_NAME ": Mellanox Connect-IB Infiniband driver v"
 	DRIVER_VERSION " (" DRIVER_RELDATE ")\n";
+
+#ifdef CONFIG_MLX5_CAPI
+extern struct ib_dma_mapping_ops mlx5_dma_mapping_ops;
+#endif
 
 enum {
 	MLX5_ATOMIC_SIZE_QP_8BYTES = 1 << 3,
@@ -568,6 +575,11 @@ static int mlx5_ib_query_device(struct ib_device *ibdev,
 	if (MLX5_CAP_GEN(mdev, pg))
 		props->device_cap_flags |= IB_DEVICE_ON_DEMAND_PAGING;
 	props->odp_caps = dev->odp_caps;
+#ifdef CONFIG_MLX5_CAPI
+	/* Disable ODP if CAPI is on */
+	if (get_cxl_mode(mdev))
+		props->device_cap_flags &= (~IB_DEVICE_ON_DEMAND_PAGING);
+#endif
 #endif
 
 	if (MLX5_CAP_GEN(mdev, cd))
@@ -936,6 +948,12 @@ static struct ib_ucontext *mlx5_ib_alloc_ucontext(struct ib_device *ibdev,
 	if (!context)
 		return ERR_PTR(-ENOMEM);
 
+#ifdef CONFIG_MLX5_CAPI
+	err = mlx5_capi_allocate_cxl_context(&context->ibucontext, dev);
+	if (err)
+		goto out_ctx;
+#endif
+
 	uuari = &context->uuari;
 	mutex_init(&uuari->lock);
 	uars = kcalloc(num_uars, sizeof(*uars), GFP_KERNEL);
@@ -967,7 +985,13 @@ static struct ib_ucontext *mlx5_ib_alloc_ucontext(struct ib_device *ibdev,
 	}
 
 	for (i = 0; i < num_uars; i++) {
+#ifdef CONFIG_MLX5_CAPI
+		err = mlx5_cmd_alloc_uar(dev->mdev, &uars[i].index,
+					 mlx5_capi_get_pe_id(
+						&context->ibucontext));
+#else
 		err = mlx5_cmd_alloc_uar(dev->mdev, &uars[i].index);
+#endif
 		if (err)
 			goto out_count;
 	}
@@ -1057,6 +1081,10 @@ static int mlx5_ib_dealloc_ucontext(struct ib_ucontext *ibcontext)
 		if (mlx5_cmd_free_uar(dev->mdev, uuari->uars[i].index))
 			mlx5_ib_warn(dev, "failed to free UAR 0x%x\n", uuari->uars[i].index);
 	}
+
+#ifdef CONFIG_MLX5_CAPI
+	mlx5_capi_release_cxl_context(&context->ibucontext);
+#endif
 
 	kfree(uuari->count);
 	kfree(uuari->bitmap);
@@ -2154,7 +2182,13 @@ static int create_dev_resources(struct mlx5_ib_resources *devr)
 	attr.ext.xrc.cq = devr->c0;
 	attr.ext.xrc.xrcd = devr->x0;
 
+#ifdef CONFIG_MLX5_CAPI
+	devr->s0 = mlx5_ib_create_srq(devr->p0, &attr, NULL,
+				      dev->mdev->priv.capi.default_pe);
+#else
 	devr->s0 = mlx5_ib_create_srq(devr->p0, &attr, NULL);
+#endif
+
 	if (IS_ERR(devr->s0)) {
 		ret = PTR_ERR(devr->s0);
 		goto error4;
@@ -2176,7 +2210,14 @@ static int create_dev_resources(struct mlx5_ib_resources *devr)
 	attr.attr.max_sge = 1;
 	attr.attr.max_wr = 1;
 	attr.srq_type = IB_SRQT_BASIC;
+
+#ifdef CONFIG_MLX5_CAPI
+	devr->s1 = mlx5_ib_create_srq(devr->p0, &attr, NULL,
+				      dev->mdev->priv.capi.default_pe);
+#else
 	devr->s1 = mlx5_ib_create_srq(devr->p0, &attr, NULL);
+#endif
+
 	if (IS_ERR(devr->s1)) {
 		ret = PTR_ERR(devr->s1);
 		goto error5;
@@ -2393,7 +2434,11 @@ static void *mlx5_ib_add(struct mlx5_core_dev *mdev)
 	dev->ib_dev.create_ah		= mlx5_ib_create_ah;
 	dev->ib_dev.query_ah		= mlx5_ib_query_ah;
 	dev->ib_dev.destroy_ah		= mlx5_ib_destroy_ah;
-	dev->ib_dev.create_srq		= mlx5_ib_create_srq;
+#ifdef CONFIG_MLX5_CAPI
+	dev->ib_dev.create_srq		= mlx5_ib_create_srq_wrapper;
+#else
+	dev->ib_dev.create_srq          = mlx5_ib_create_srq;
+#endif
 	dev->ib_dev.modify_srq		= mlx5_ib_modify_srq;
 	dev->ib_dev.query_srq		= mlx5_ib_query_srq;
 	dev->ib_dev.destroy_srq		= mlx5_ib_destroy_srq;
@@ -2421,6 +2466,13 @@ static void *mlx5_ib_add(struct mlx5_core_dev *mdev)
 	dev->ib_dev.map_mr_sg		= mlx5_ib_map_mr_sg;
 	dev->ib_dev.check_mr_status	= mlx5_ib_check_mr_status;
 	dev->ib_dev.get_port_immutable  = mlx5_port_immutable;
+
+#ifdef CONFIG_MLX5_CAPI
+	if (get_cxl_mode(mdev))
+		dev->ib_dev.dma_ops = &mlx5_dma_mapping_ops;
+#endif
+	
+
 	if (mlx5_core_is_pf(mdev)) {
 		dev->ib_dev.get_vf_config	= mlx5_ib_get_vf_config;
 		dev->ib_dev.set_vf_link_state	= mlx5_ib_set_vf_link_state;

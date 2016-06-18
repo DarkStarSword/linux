@@ -31,3 +31,10 @@ config MLX5_CORE_EN_DCB
 	  This flag is depended on the kernel's DCB support.
 
 	  If unsure, set to Y
+
+config MLX5_CAPI
+	bool "Mellanox Technologies ConnectX-4 Ethernet support"
+	depends on PCI && MLX5_CORE && CXL_KERNEL2_API
+	default n
+	---help---
+		CAPI support in Mellanox Technologies ConnectX-4 NIC.
