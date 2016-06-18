@@ -57,6 +57,10 @@
 #include "eswitch.h"
 #endif
 
+#ifdef CONFIG_MLX5_CAPI
+#include "capi.h"
+#endif
+
 MODULE_AUTHOR("Eli Cohen <eli@mellanox.com>");
 MODULE_DESCRIPTION("Mellanox Connect-IB, ConnectX-4 core driver");
 MODULE_LICENSE("Dual BSD/GPL");
@@ -98,69 +102,70 @@ static struct mlx5_profile profile[] = {
 		.mask		= MLX5_PROF_MASK_QP_SIZE |
 				  MLX5_PROF_MASK_MR_CACHE,
 		.log_max_qp	= 17,
+		/* Huy change back */
 		.mr_cache[0]	= {
-			.size	= 500,
-			.limit	= 250
+			.size	= 0,//500,
+			.limit	= 0,//250
 		},
 		.mr_cache[1]	= {
-			.size	= 500,
-			.limit	= 250
+			.size	= 0,//500,
+			.limit	= 0,//250
 		},
 		.mr_cache[2]	= {
-			.size	= 500,
-			.limit	= 250
+			.size	= 0,//500,
+			.limit	= 0.//250
 		},
 		.mr_cache[3]	= {
-			.size	= 500,
-			.limit	= 250
+			.size	= 0,//500,
+			.limit	= 0,//250
 		},
 		.mr_cache[4]	= {
-			.size	= 500,
-			.limit	= 250
+			.size	= 0,//500,
+			.limit	= 0,//250
 		},
 		.mr_cache[5]	= {
-			.size	= 500,
-			.limit	= 250
+			.size	= 0,//500,
+			.limit	= 0,//250
 		},
 		.mr_cache[6]	= {
-			.size	= 500,
-			.limit	= 250
+			.size	= 0,//500,
+			.limit	= 0,//250
 		},
 		.mr_cache[7]	= {
-			.size	= 500,
-			.limit	= 250
+			.size	= 0,//500,
+			.limit	= 0,//250
 		},
 		.mr_cache[8]	= {
-			.size	= 500,
-			.limit	= 250
+			.size	= 0,//500,
+			.limit	= 0,//250
 		},
 		.mr_cache[9]	= {
-			.size	= 500,
-			.limit	= 250
+			.size	= 0,//500,
+			.limit	= 0,//250
 		},
 		.mr_cache[10]	= {
-			.size	= 500,
-			.limit	= 250
+			.size	= 0,//500,
+			.limit	= 0,//250
 		},
 		.mr_cache[11]	= {
-			.size	= 500,
-			.limit	= 250
+			.size	= 0,//500,
+			.limit	= 0,//250
 		},
 		.mr_cache[12]	= {
-			.size	= 64,
-			.limit	= 32
+			.size	= 0,//64,
+			.limit	= 0,//32
 		},
 		.mr_cache[13]	= {
-			.size	= 32,
-			.limit	= 16
+			.size	= 0,//32,
+			.limit	= 0,//16
 		},
 		.mr_cache[14]	= {
-			.size	= 16,
-			.limit	= 8
+			.size	= 0,//16,
+			.limit	= 0,//8
 		},
 		.mr_cache[15]	= {
-			.size	= 8,
-			.limit	= 4
+			.size	= 0,//8,
+			.limit	= 0,//4
 		},
 	},
 };
@@ -270,6 +275,11 @@ static int mlx5_enable_msix(struct mlx5_core_dev *dev)
 	int num_eqs = 1 << MLX5_CAP_GEN(dev, log_max_eq);
 	int nvec;
 	int i;
+
+	/* Huy Remove */
+#ifdef CONFIG_MLX5_CAPI
+	num_eqs = 15;
+#endif
 
 	nvec = MLX5_CAP_GEN(dev, num_ports) * num_online_cpus() +
 	       MLX5_EQ_VEC_COMP_BASE;
@@ -1001,6 +1011,11 @@ static int mlx5_load_one(struct mlx5_core_dev *dev, struct mlx5_priv *priv)
 	int err;
 
 	mutex_lock(&dev->intf_state_mutex);
+
+#ifdef CONFIG_MLX5_CAPI
+	mlx5_capi_setup(dev, pdev);
+#endif
+
 	if (test_bit(MLX5_INTERFACE_STATE_UP, &dev->intf_state)) {
 		dev_warn(&dev->pdev->dev, "%s: interface is up, NOP\n",
 			 __func__);
@@ -1334,6 +1349,13 @@ static int init_one(struct pci_dev *pdev,
 
 	INIT_LIST_HEAD(&priv->ctx_list);
 	spin_lock_init(&priv->ctx_lock);
+
+#ifdef CONFIG_MLX5_CAPI
+	err = mlx5_capi_initialize(dev, pdev);
+	if (err)
+		return err;
+#endif
+
 	mutex_init(&dev->pci_status_mutex);
 	mutex_init(&dev->intf_state_mutex);
 	err = mlx5_pci_init(dev, priv);
@@ -1380,6 +1402,9 @@ static void remove_one(struct pci_dev *pdev)
 	mlx5_health_cleanup(dev);
 	mlx5_pci_close(dev, priv);
 	pci_set_drvdata(pdev, NULL);
+#ifdef CONFIG_MLX5_CAPI
+	mlx5_capi_cleanup(dev, pdev);
+#endif
 	kfree(dev);
 }
 
