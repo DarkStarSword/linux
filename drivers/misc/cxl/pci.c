@@ -467,7 +467,7 @@ static u64 timebase_read_xsl(struct cxl *adapter)
 	return cxl_p1_read(adapter, CXL_XSL_Timebase);
 }
 
-static void cxl_setup_psl_timebase(struct cxl *adapter, struct pci_dev *dev)
+static void __maybe_unused cxl_setup_psl_timebase(struct cxl *adapter, struct pci_dev *dev)
 {
 	u64 psl_tb;
 	int delta;
@@ -865,6 +865,7 @@ static int cxl_read_afu_descriptor(struct cxl_afu *afu, struct pci_dev *dev)
 
 	if (dev->vendor == PCI_VENDOR_ID_MELLANOX && dev->device == 0x1013) {
 		/* XXX: Hacks for CX4 */
+		afu->max_procs_virtualised = 0xffff;
 		afu->modes_supported |= CXL_MODE_DIRECTED;
 		afu->pp_size = 0;
 		afu->psa = 0;
@@ -926,6 +927,21 @@ static int cxl_afu_descriptor_looks_ok(struct cxl_afu *afu)
 			dev_err(&afu->dev, "ABORTING: AFU configuration record %i is invalid\n", i);
 			return -EINVAL;
 		}
+	}
+
+	if ((afu->modes_supported & ~CXL_MODE_DEDICATED) && afu->max_procs_virtualised == 0) {
+		/*
+		 * We could also check this for the dedicated process model
+		 * since the architecture indicates it should be set to 1, but
+		 * in that case we ignore the value and I'd rather not risk
+		 * breaking any existing dedicated process AFUs that left it as
+		 * 0 (not that I'm aware of any). It is clearly an error for an
+		 * AFU directed AFU to set this to 0, and would have previously
+		 * triggered a bug resulting in the maximum not being enforced
+		 * at all since idr_alloc treats 0 as no maximum.
+		 */
+		dev_err(&afu->dev, "AFU does not support any processes\n");
+		return -EINVAL;
 	}
 
 	return 0;
@@ -1418,8 +1434,10 @@ static int cxl_configure_adapter(struct cxl *adapter, struct pci_dev *dev)
 	if ((rc = pnv_phb_to_cxl_mode(dev, OPAL_PHB_CAPI_MODE_SNOOP_ON)))
 		goto err;
 
+#if 0 /* Timebase makes for a noisy PCI analyser dump, disable temporarily, re-enable for upstreaming */
 	/* Ignore error, adapter init is not dependant on timebase sync */
 	cxl_setup_psl_timebase(adapter, dev);
+#endif
 
 	if ((rc = cxl_native_register_psl_err_irq(adapter)))
 		goto err;

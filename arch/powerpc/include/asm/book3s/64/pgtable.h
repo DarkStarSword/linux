@@ -835,6 +835,7 @@ static inline int has_transparent_hugepage(void)
 		return radix__has_transparent_hugepage();
 	return hash__has_transparent_hugepage();
 }
+#define has_transparent_hugepage has_transparent_hugepage
 
 static inline unsigned long
 pmd_hugepage_update(struct mm_struct *mm, unsigned long addr, pmd_t *pmdp,
