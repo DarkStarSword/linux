@@ -75,7 +75,7 @@ int mlx5_ib_db_map_user(struct mlx5_ib_ucontext *context, unsigned long virt,
 
 found:
 #ifdef CONFIG_MLX5_CAPI
-	db->virt_addr = page->user_virt;
+	db->virt_addr = page->user_virt + (virt & ~PAGE_MASK);
 #endif
 
 	db->dma = sg_dma_address(page->umem->sg_head.sgl) + (virt & ~PAGE_MASK);
