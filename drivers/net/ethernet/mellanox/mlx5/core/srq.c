@@ -96,6 +96,9 @@ static void rmpc_srqc_reformat(void *srqc, void *rmpc, bool srqc_to_rmpc)
 			MLX5_SET(rmpc, rmpc, state, MLX5_GET(srqc, srqc, state));
 		}
 
+#ifdef CONFIG_MLX5_CAPI
+		MLX5_SET(wq,   wq, uar_page,      MLX5_GET(srqc, srqc, pe_id) << (8-(PAGE_SHIFT-12)));
+#endif
 		MLX5_SET(wq,   wq, wq_signature,  MLX5_GET(srqc,  srqc, wq_signature));
 		MLX5_SET(wq,   wq, log_wq_pg_sz,  MLX5_GET(srqc,  srqc, log_page_size));
 		MLX5_SET(wq,   wq, log_wq_stride, MLX5_GET(srqc,  srqc, log_rq_stride) + 4);
