@@ -2210,7 +2210,12 @@ struct mlx5_ifc_srqc_bits {
 	u8         log_page_size[0x6];
 	u8         reserved_at_88[0x18];
 
+#ifdef CONFIG_MLX5_CAPI
+	u8         reserved_at_a0[0x10];
+	u8         pe_id[0x10];
+#else
 	u8         reserved_at_a0[0x20];
+#endif
 
 	u8         reserved_at_c0[0x8];
 	u8         pd[0x18];
