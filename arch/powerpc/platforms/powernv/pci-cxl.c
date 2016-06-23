@@ -7,6 +7,7 @@
  * 2 of the License, or (at your option) any later version.
  */
 
+#include <linux/module.h>
 #include <linux/msi.h>
 #include <asm/pci-bridge.h>
 #include <asm/pnv-pci.h>
@@ -14,25 +15,55 @@
 
 #include "pci.h"
 
+static struct cxl_context *(*external_cxl_next_context)(struct cxl_context *ctx);
+
 /*
  * Sets flags and switches the controller ops to enable the cxl kernel2 api.
  * The original cxl kernel API operated on a virtual PHB, whereas the kernel2
  * api operates on a real PHB (but otherwise shares much of the same
  * implementation), and is currently restricted to the Mellanox CX-4 card when
- * in cxl mode. The CX4 card has some additional quirks that we need to handle.
+ * in cxl mode.
  */
-void pnv_cxl_enable_phb_kernel2_api(struct pci_dev *dev, bool enable, int quirks)
+int pnv_cxl_enable_phb_kernel2_api(struct pci_dev *dev, bool enable, int quirks)
 {
 	struct pci_controller *hose = pci_bus_to_host(dev->bus);
 	struct pnv_phb *phb = hose->private_data;
+	struct module *cxl_module;
 
-	if (enable) {
-		phb->flags |= PNV_PHB_FLAG_CXL;
-		hose->controller_ops = pnv_cxl_cx4_ioda_controller_ops;
-	} else {
-		phb->flags &= ~PNV_PHB_FLAG_CXL;
-		hose->controller_ops = pnv_pci_ioda_controller_ops;
+	if (!enable) {
+		/*
+		 * Once cxl mode is enabled on the PHB, there is currently no
+		 * known safe method to disable it again, and trying risks a
+		 * checkstop. If we can find a way to safely disable cxl mode
+		 * in the future we can revisit this, but for now the only sane
+		 * thing to do is to refuse to disable cxl mode:
+		 */
+		return -EPERM;
 	}
+
+	/*
+	 * Hold a reference to the cxl module since several PHB operations now
+	 * depend on it, and it would be insane to allow it to be removed so
+	 * long as we are in this mode (and since we can't safely disable this
+	 * mode once enabled...).
+	 */
+	mutex_lock(&module_mutex);
+	cxl_module = find_module("cxl");
+	if (cxl_module)
+		__module_get(cxl_module);
+	mutex_unlock(&module_mutex);
+	if (!cxl_module)
+		return -ENODEV;
+
+	/*
+	 * Get function pointers to various APIs we need to call
+	 */
+	external_cxl_next_context = symbol_get("cxl_next_context");
+
+	phb->flags |= PNV_PHB_FLAG_CXL;
+	hose->controller_ops = pnv_cxl_cx4_ioda_controller_ops;
+
+	return 0;
 }
 EXPORT_SYMBOL(pnv_cxl_enable_phb_kernel2_api);
 
@@ -110,10 +141,6 @@ int pnv_cxl_cx4_setup_msi_irqs(struct pci_dev *pdev, int nvec, int type)
 	if (pdev->no_64bit_msi && !phb->msi32_support)
 		return -ENODEV;
 
-	/*
-	 * FIXME: Gate this on getting the cxl module, probably just do this
-	 * once when switching the phb to cxl mode.
-	 */
 	ctx = cxl_get_context(pdev);
 	if (WARN_ON(!ctx))
 		return -ENODEV;
@@ -180,7 +207,7 @@ int pnv_cxl_cx4_setup_msi_irqs(struct pci_dev *pdev, int nvec, int type)
 		afu_irq++;
 		if (afu_irq > ctx->afu->max_irqs) {
 			// TODO: Use symbol_request / symbol_get to clean up getting symbols
-			ctx = cxl_next_context(ctx);
+			ctx = external_cxl_next_context(ctx);
 			afu_irq = 1;
 		}
 	}
