@@ -1068,9 +1068,15 @@ int mlx5_ib_update_mtt(struct mlx5_ib_mr *mr, u64 start_page_index, int npages,
 			       ib_umem_num_pages(umem) - start_page_index);
 
 		if (!zap) {
+#ifdef CONFIG_MLX5_CAPI
 			__mlx5_ib_populate_pas(dev, umem, PAGE_SHIFT,
 					       start_page_index, npages, pas,
-					       MLX5_IB_MTT_PRESENT, 1); /* Huy to do */
+					       MLX5_IB_MTT_PRESENT, 1);
+#else
+			__mlx5_ib_populate_pas(dev, umem, PAGE_SHIFT,
+					       start_page_index, npages, pas,
+					       MLX5_IB_MTT_PRESENT);
+#endif
 			/* Clear padding after the pages brought from the
 			 * umem. */
 			memset(pas + npages, 0, size - npages * sizeof(u64));
@@ -1150,9 +1156,17 @@ static struct mlx5_ib_mr *reg_create(struct ib_mr *ibmr, struct ib_pd *pd,
 		err = -ENOMEM;
 		goto err_1;
 	}
+
+#ifdef CONFIG_MLX5_CAPI
+	/* Huy to do with ODP flag for pin/nonpin */
 	mlx5_ib_populate_pas(dev, umem, page_shift, in->pas,
 			     pg_cap ? MLX5_IB_MTT_PRESENT : 0,
 			     0);
+#else
+	mlx5_ib_populate_pas(dev, umem, page_shift, in->pas,
+			     pg_cap ? MLX5_IB_MTT_PRESENT : 0);
+
+#endif
 
 	/* The MLX5_MKEY_INBOX_PG_ACCESS bit allows setting the access flags
 	 * in the page list submitted with the command. */
