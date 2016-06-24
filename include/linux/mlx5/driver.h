@@ -776,7 +776,7 @@ int mlx5_cmd_exec(struct mlx5_core_dev *dev, void *in, int in_size, void *out,
 int mlx5_cmd_exec_cb(struct mlx5_core_dev *dev, void *in, int in_size,
 		     void *out, int out_size, mlx5_cmd_cbk_t callback,
 		     void *context);
-#if CONFIG_MLX5_CAPI
+#ifdef CONFIG_MLX5_CAPI
 int mlx5_cmd_alloc_uar(struct mlx5_core_dev *dev, u32 *uarn, int pe_id);
 #else
 int mlx5_cmd_alloc_uar(struct mlx5_core_dev *dev, u32 *uarn);
