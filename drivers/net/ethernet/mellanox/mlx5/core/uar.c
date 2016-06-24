@@ -259,8 +259,8 @@ int mlx5_alloc_map_uar(struct mlx5_core_dev *mdev, struct mlx5_uar *uar,
 	phys_addr_t uar_bar_start;
 	int err;
 
-	/*Called by Ethernet code*/
-#if CONFIG_MLX5_CAPI
+#ifdef CONFIG_MLX5_CAPI
+	/* Called by ethernet code */
 	err = mlx5_cmd_alloc_uar(mdev, &uar->index, mdev->priv.capi.default_pe);
 #else
 	err = mlx5_cmd_alloc_uar(mdev, &uar->index);
