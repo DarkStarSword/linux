@@ -184,6 +184,14 @@ int cxl_process_element(struct cxl_context *ctx);
  * parameters previously passed to cxl_start_context for the default context.
  */
 int cxl_set_max_irqs_per_process(struct pci_dev *dev, int irqs);
+int cxl_get_max_irqs_per_process(struct pci_dev *dev);
+
+/*
+ * Use to iterate over multiple related default contexts. This is currently
+ * only used on hardware that has limitations on the number of interrupts per
+ * process, and where interrupts have been allocated via pci_enable_msix_range.
+ */
+struct cxl_context *cxl_next_context(struct cxl_context *ctx);
 
 /*
  * These calls allow drivers to create their own file descriptors and make them

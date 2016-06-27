@@ -64,16 +64,17 @@ err_dev:
 }
 EXPORT_SYMBOL_GPL(cxl_dev_context_init);
 
-struct cxl_context *_cxl_get_context(struct pci_dev *dev)
+struct cxl_context *cxl_get_context(struct pci_dev *dev)
 {
 	return dev->dev.archdata.cxl_ctx;
 }
-/* exported via cxl_base */
+EXPORT_SYMBOL_GPL(cxl_get_context);
 
 struct cxl_context *cxl_next_context(struct cxl_context *ctx)
 {
 	return list_next_entry(ctx, list);
 }
+EXPORT_SYMBOL_GPL(cxl_next_context);
 
 int cxl_release_context(struct cxl_context *ctx)
 {
@@ -86,7 +87,7 @@ int cxl_release_context(struct cxl_context *ctx)
 }
 EXPORT_SYMBOL_GPL(cxl_release_context);
 
-irq_hw_number_t _cxl_afu_irq_to_hwirq(struct cxl_context *ctx, int num)
+irq_hw_number_t cxl_afu_irq_to_hwirq(struct cxl_context *ctx, int num)
 {
 	__u16 range;
 	int r;
@@ -100,9 +101,9 @@ irq_hw_number_t _cxl_afu_irq_to_hwirq(struct cxl_context *ctx, int num)
 	}
 	return 0;
 }
-/* exported via cxl_base */
+EXPORT_SYMBOL(cxl_afu_irq_to_hwirq);
 
-int _cxl_allocate_afu_irqs(struct cxl_context *ctx, int num)
+int cxl_allocate_afu_irqs(struct cxl_context *ctx, int num)
 {
 	int res;
 	irq_hw_number_t hwirq;
@@ -130,9 +131,9 @@ int _cxl_allocate_afu_irqs(struct cxl_context *ctx, int num)
 
 	return res;
 }
-/* exported via cxl_base */
+EXPORT_SYMBOL_GPL(cxl_allocate_afu_irqs);
 
-void _cxl_free_afu_irqs(struct cxl_context *ctx)
+void cxl_free_afu_irqs(struct cxl_context *ctx)
 {
 	irq_hw_number_t hwirq;
 	unsigned int virq;
@@ -148,7 +149,7 @@ void _cxl_free_afu_irqs(struct cxl_context *ctx)
 	afu_irq_name_free(ctx);
 	cxl_ops->release_irq_ranges(&ctx->irqs, ctx->afu->adapter);
 }
-/* exported via cxl_base */
+EXPORT_SYMBOL(cxl_free_afu_irqs);
 
 int cxl_map_afu_irq(struct cxl_context *ctx, int num,
 		    irq_handler_t handler, void *cookie, char *name)
@@ -219,11 +220,11 @@ out:
 }
 EXPORT_SYMBOL_GPL(cxl_start_context);
 
-int _cxl_process_element(struct cxl_context *ctx)
+int cxl_process_element(struct cxl_context *ctx)
 {
 	return ctx->external_pe;
 }
-/* exported via cxl_base */
+EXPORT_SYMBOL(cxl_process_element);
 
 /* Stop a context.  Returns 0 on success, otherwise -Errno */
 int cxl_stop_context(struct cxl_context *ctx)
@@ -429,4 +430,14 @@ int cxl_set_max_irqs_per_process(struct pci_dev *dev, int irqs)
 	afu->irqs_max = irqs;
 
 	return 0;
+}
+EXPORT_SYMBOL_GPL(cxl_set_max_irqs_per_process);
+
+int cxl_get_max_irqs_per_process(struct pci_dev *dev)
+{
+	struct cxl_afu *afu = cxl_pci_to_afu(dev);
+	if (IS_ERR(afu))
+		return -ENODEV;
+
+	return afu->irqs_max;
 }

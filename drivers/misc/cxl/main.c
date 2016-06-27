@@ -113,11 +113,8 @@ static inline void cxl_slbia_core(struct mm_struct *mm)
 static struct cxl_calls cxl_calls = {
 	.cxl_slbia = cxl_slbia_core,
 	.cxl_pci_associate_default_context = _cxl_pci_associate_default_context,
-	.cxl_get_context = _cxl_get_context,
 	.cxl_allocate_afu_irqs = _cxl_allocate_afu_irqs,
-	.cxl_afu_irq_to_hwirq = _cxl_afu_irq_to_hwirq,
 	.cxl_process_element = _cxl_process_element,
-	.cxl_get_context = _cxl_get_context,
 	.cxl_free_afu_irqs = _cxl_free_afu_irqs,
 	.owner = THIS_MODULE,
 };

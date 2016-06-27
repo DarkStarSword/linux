@@ -15,8 +15,6 @@
 
 #include "pci.h"
 
-static struct cxl_context *(*external_cxl_next_context)(struct cxl_context *ctx);
-
 /*
  * Sets flags and switches the controller ops to enable the cxl kernel2 api.
  * The original cxl kernel API operated on a virtual PHB, whereas the kernel2
@@ -54,11 +52,6 @@ int pnv_cxl_enable_phb_kernel2_api(struct pci_dev *dev, bool enable, int quirks)
 	mutex_unlock(&module_mutex);
 	if (!cxl_module)
 		return -ENODEV;
-
-	/*
-	 * Get function pointers to various APIs we need to call
-	 */
-	external_cxl_next_context = symbol_get("cxl_next_context");
 
 	phb->flags |= PNV_PHB_FLAG_CXL;
 	hose->controller_ops = pnv_cxl_cx4_ioda_controller_ops;
@@ -134,6 +127,10 @@ int pnv_cxl_cx4_setup_msi_irqs(struct pci_dev *pdev, int nvec, int type)
 	int afu_irq = 1;
 	int hwirq;
 	int rc;
+	struct cxl_context *(*external_cxl_next_context)(struct cxl_context *ctx);
+	int (*external_cxl_get_max_irqs_per_process)(struct pci_dev *dev);
+	struct cxl_context *(*external_cxl_get_context)(struct pci_dev *dev);
+	int max_irqs;
 
 	if (WARN_ON(!phb) || !phb->msi_bmp.bitmap)
 		return -ENODEV;
@@ -141,9 +138,22 @@ int pnv_cxl_cx4_setup_msi_irqs(struct pci_dev *pdev, int nvec, int type)
 	if (pdev->no_64bit_msi && !phb->msi32_support)
 		return -ENODEV;
 
-	ctx = cxl_get_context(pdev);
+	/*
+	 * Get function pointers to various APIs we need to call. We should
+	 * already have a reference to the cxl module, so we don't expect these
+	 * to fail.
+	 */
+	external_cxl_get_max_irqs_per_process = symbol_get(cxl_get_max_irqs_per_process);
+	external_cxl_next_context = symbol_get(cxl_next_context);
+	external_cxl_get_context = symbol_get(cxl_get_context);
+
+
+	ctx = external_cxl_get_context(pdev);
 	if (WARN_ON(!ctx))
 		return -ENODEV;
+
+	max_irqs = external_cxl_get_max_irqs_per_process(pdev);
+
 
 	/*
 	 * cxl has to fit all the interrupts in up to four ranges (one of which
@@ -162,12 +172,12 @@ int pnv_cxl_cx4_setup_msi_irqs(struct pci_dev *pdev, int nvec, int type)
 	 */
 	remaining = nvec;
 	while (remaining > 0) {
-		rc = cxl_allocate_afu_irqs(ctx, min(remaining, ctx->afu->max_irqs));
+		rc = cxl_allocate_afu_irqs(ctx, min(remaining, max_irqs));
 		if (rc) {
 			pr_warn("%s: Failed to find enough free MSIs\n", pci_name(pdev));
 			return rc;
 		}
-		remaining -= ctx->afu->max_irqs;
+		remaining -= max_irqs;
 
 		if (remaining > 0) {
 			new_ctx = cxl_dev_context_init(pdev);
@@ -179,7 +189,7 @@ int pnv_cxl_cx4_setup_msi_irqs(struct pci_dev *pdev, int nvec, int type)
 		}
 	}
 
-	ctx = cxl_get_context(pdev);
+	ctx = external_cxl_get_context(pdev);
 	for_each_pci_msi_entry(entry, pdev) {
 		if (!entry->msi_attrib.is_64 && !phb->msi32_support) {
 			pr_warn("%s: Supports only 64-bit MSIs\n",
@@ -205,12 +215,16 @@ int pnv_cxl_cx4_setup_msi_irqs(struct pci_dev *pdev, int nvec, int type)
 		irq_set_msi_desc(virq, entry);
 
 		afu_irq++;
-		if (afu_irq > ctx->afu->max_irqs) {
+		if (afu_irq > max_irqs) {
 			// TODO: Use symbol_request / symbol_get to clean up getting symbols
 			ctx = external_cxl_next_context(ctx);
 			afu_irq = 1;
 		}
 	}
+
+	symbol_put(cxl_get_context);
+	symbol_put(cxl_next_context);
+	symbol_put(cxl_get_max_irqs_per_process)
 	return 0;
 }
 
@@ -221,13 +235,16 @@ void pnv_cxl_cx4_teardown_msi_irqs(struct pci_dev *pdev)
 	struct msi_desc *entry;
 	irq_hw_number_t hwirq;
 	struct cxl_context *ctx;
+	struct cxl_context *(*external_cxl_get_context)(struct pci_dev *dev);
 
 	if (WARN_ON(!phb))
 		return;
 
+	external_cxl_get_context = symbol_get(cxl_get_context);
+
 	ctx = cxl_get_context(pdev);
 	if (WARN_ON(!ctx))
-		return;
+		goto out_put_symbols;
 
 	for_each_pci_msi_entry(entry, pdev) {
 		if (entry->irq == NO_IRQ)
@@ -238,4 +255,7 @@ void pnv_cxl_cx4_teardown_msi_irqs(struct pci_dev *pdev)
 	}
 
 	cxl_free_afu_irqs(ctx);
+
+out_put_symbols:
+	symbol_put(cxl_get_context);
 }
