@@ -13,6 +13,8 @@
 #include <linux/file.h>
 #include <misc/cxl.h>
 #include <linux/fs.h>
+#include <asm/pnv-pci.h>
+#include <linux/msi.h>
 
 #include "cxl.h"
 
@@ -72,7 +74,7 @@ EXPORT_SYMBOL_GPL(cxl_get_context);
 
 struct cxl_context *cxl_next_context(struct cxl_context *ctx)
 {
-	return list_next_entry(ctx, list);
+	return list_next_entry(ctx, extra_irq_contexts);
 }
 EXPORT_SYMBOL_GPL(cxl_next_context);
 
@@ -441,3 +443,131 @@ int cxl_get_max_irqs_per_process(struct pci_dev *dev)
 
 	return afu->irqs_max;
 }
+EXPORT_SYMBOL_GPL(cxl_get_max_irqs_per_process);
+
+/*
+ * This is a special version of pnv_setup_msi_irqs for cards in cxl mode. This
+ * function handles setting up the IVTE entries for the XSL to use.
+ *
+ * We are currently not filling out the MSIX table, since the only currently
+ * supported adapter (CX4) uses a custom MSIX table format in cxl mode and it
+ * is up to their driver to fill that out.
+ *
+ * In the future we may fill out the MSIX table (and change the IVTE entries to
+ * be an index to the MSIX table) for adapters implementing the Full MSI-X mode
+ * described in the CAIA.
+ */
+int _cxl_cx4_setup_msi_irqs(struct pci_dev *pdev, int nvec, int type)
+{
+	struct msi_desc *entry;
+	struct cxl_context *ctx, *new_ctx, *default_ctx;
+	int remaining;
+	unsigned int virq;
+	int afu_irq = 1;
+	int hwirq;
+	int rc;
+
+	ctx = default_ctx = cxl_get_context(pdev);
+	if (WARN_ON(!default_ctx))
+		return -ENODEV;
+
+	/*
+	 * cxl has to fit all the interrupts in up to four ranges (one of which
+	 * is used by a multiplexed DSI interrupt), so to maximise the chance
+	 * of success we call into the cxl driver to allocate them from the
+	 * bitmap and set up the ranges:
+	 *
+	 * FIXME: This differs a little from the regular MSI-X case in the
+	 * event of a failure - if the bitmap allocation fails at all we fail
+	 * the whole call, and if the bitmap succeeds but something else fails
+	 * we leave some interrupts allocated in the bitmap, which will be
+	 * freed in the teardown function, but might be nice to release them
+	 * here. Given that this routine is used by exactly one driver and the
+	 * PHB has to be dedicated to the card in cxl mode, let's see if it's a
+	 * problem in practice before trying to do anything heroic.
+	 */
+	remaining = nvec;
+	while (remaining > 0) {
+		rc = cxl_allocate_afu_irqs(ctx, min(remaining, ctx->afu->irqs_max));
+		if (rc) {
+			pr_warn("%s: Failed to find enough free MSIs\n", pci_name(pdev));
+			return rc;
+		}
+		remaining -= ctx->afu->irqs_max;
+
+		if (remaining > 0) {
+			new_ctx = cxl_dev_context_init(pdev);
+			if (!new_ctx) {
+				pr_warn("%s: Failed to allocate enough contexts for MSIs\n", pci_name(pdev));
+				return -ENOSPC;
+			}
+			list_add(&new_ctx->extra_irq_contexts, &ctx->extra_irq_contexts);
+			ctx = new_ctx;
+		}
+	}
+
+	ctx = default_ctx;
+	for_each_pci_msi_entry(entry, pdev) {
+		hwirq = cxl_afu_irq_to_hwirq(ctx, afu_irq);
+		virq = irq_create_mapping(NULL, hwirq);
+		if (virq == NO_IRQ) {
+			pr_warn("%s: Failed to map cxl mode MSI to linux irq\n",
+				pci_name(pdev));
+			return -ENOMEM;
+		}
+
+		rc = pnv_cxl_ioda_msi_setup(pdev, hwirq, virq);
+		if (rc) {
+			pr_warn("%s: Failed to setup cxl mode MSI\n", pci_name(pdev));
+			irq_dispose_mapping(virq);
+			return rc;
+		}
+
+		irq_set_msi_desc(virq, entry);
+
+		afu_irq++;
+		if (afu_irq > ctx->afu->irqs_max) {
+			ctx = cxl_next_context(ctx);
+			afu_irq = 1;
+		}
+	}
+
+	if (default_ctx->status == STARTED) {
+		list_for_each_entry(ctx, &default_ctx->extra_irq_contexts, extra_irq_contexts) {
+			WARN_ON(cxl_start_context(ctx,
+				be64_to_cpu(default_ctx->elem->common.wed),
+				NULL));
+		}
+	}
+
+	return 0;
+}
+/* Exported via cxl_base */
+
+void _cxl_cx4_teardown_msi_irqs(struct pci_dev *pdev)
+{
+	struct msi_desc *entry;
+	irq_hw_number_t hwirq;
+	struct cxl_context *ctx, *pos, *tmp;
+
+	ctx = cxl_get_context(pdev);
+	if (WARN_ON(!ctx))
+		return;
+
+	for_each_pci_msi_entry(entry, pdev) {
+		if (entry->irq == NO_IRQ)
+			continue;
+		hwirq = virq_to_hw(entry->irq);
+		irq_set_msi_desc(entry->irq, NULL);
+		irq_dispose_mapping(entry->irq);
+	}
+
+	cxl_free_afu_irqs(ctx);
+	list_for_each_entry_safe(pos, tmp, &ctx->extra_irq_contexts, extra_irq_contexts) {
+		cxl_stop_context(pos);
+		cxl_free_afu_irqs(pos);
+		list_del(&pos->extra_irq_contexts);
+		cxl_release_context(pos);
+	}
+}
+/* Exported via cxl_base */

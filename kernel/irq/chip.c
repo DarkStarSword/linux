@@ -137,6 +137,9 @@ int irq_set_msi_desc(unsigned int irq, struct msi_desc *entry)
 {
 	return irq_set_msi_desc_off(irq, 0, entry);
 }
+/* FIXME: Restructure cxl/cx4 msi code back into arch/powerpc so this doesn't
+ * need to be exported... at the cost of tighter coupling to cxl */
+EXPORT_SYMBOL_GPL(irq_set_msi_desc);
 
 /**
  *	irq_set_chip_data - set irq chip data for an irq

@@ -529,6 +529,14 @@ struct cxl_context {
 	bool pending_afu_err;
 
 	struct rcu_head rcu;
+
+	/*
+	 * Only used when more interrupts are allocated via
+	 * pci_enable_msix_range than are supported in the default context, to
+	 * use additional contexts to overcome the limitation. i.e. Mellanox
+	 * CX4 only:
+	 */
+	struct list_head extra_irq_contexts;
 };
 
 struct cxl_service_layer_ops {
@@ -712,12 +720,14 @@ ssize_t cxl_pci_afu_read_err_buffer(struct cxl_afu *afu, char *buf,
 
 /* Internal functions wrapped in cxl_base to allow PHB to call them */
 bool _cxl_pci_associate_default_context(struct pci_dev *dev, struct cxl_afu *afu);
+int _cxl_cx4_setup_msi_irqs(struct pci_dev *pdev, int nvec, int type);
+void _cxl_cx4_teardown_msi_irqs(struct pci_dev *pdev);
 
 struct cxl_calls {
 	void (*cxl_slbia)(struct mm_struct *mm);
 	bool (*cxl_pci_associate_default_context)(struct pci_dev *dev, struct cxl_afu *afu);
 	int (*cxl_cx4_setup_msi_irqs)(struct pci_dev *pdev, int nvec, int type);
-	int (*cxl_cx4_teardown_msi_irqs)(struct pci_dev *pdev, int nvec, int type);
+	void (*cxl_cx4_teardown_msi_irqs)(struct pci_dev *pdev);
 
 	struct module *owner;
 };

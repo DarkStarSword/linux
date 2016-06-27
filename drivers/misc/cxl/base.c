@@ -116,7 +116,7 @@ EXPORT_SYMBOL_GPL(cxl_pci_associate_default_context);
 
 int cxl_cx4_setup_msi_irqs(struct pci_dev *pdev, int nvec, int type)
 {
-	bool ret;
+	int ret;
 	struct cxl_calls *calls;
 
 	calls = cxl_calls_get();
@@ -130,6 +130,20 @@ int cxl_cx4_setup_msi_irqs(struct pci_dev *pdev, int nvec, int type)
 	return ret;
 }
 EXPORT_SYMBOL_GPL(cxl_cx4_setup_msi_irqs);
+
+void cxl_cx4_teardown_msi_irqs(struct pci_dev *pdev)
+{
+	struct cxl_calls *calls;
+
+	calls = cxl_calls_get();
+	if (!calls)
+		return;
+
+	calls->cxl_cx4_teardown_msi_irqs(pdev);
+
+	cxl_calls_put(calls);
+}
+EXPORT_SYMBOL_GPL(cxl_cx4_teardown_msi_irqs);
 
 static int __init cxl_base_init(void)
 {
