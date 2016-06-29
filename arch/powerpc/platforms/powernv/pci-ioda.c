@@ -3625,7 +3625,9 @@ const struct pci_controller_ops pnv_cxl_cx4_ioda_controller_ops = {
 	.teardown_msi_irqs	= pnv_cxl_cx4_teardown_msi_irqs,
 #endif
 	.enable_device_hook	= pnv_pci_enable_device_hook,
+	.release_device		= pnv_pci_release_device,
 	.window_alignment	= pnv_pci_window_alignment,
+	.setup_bridge		= pnv_pci_setup_bridge,
 	.reset_secondary_bus	= pnv_pci_reset_secondary_bus,
 	.dma_set_mask		= pnv_pci_ioda_dma_set_mask,
 	.dma_get_required_mask	= pnv_pci_ioda_dma_get_required_mask,
