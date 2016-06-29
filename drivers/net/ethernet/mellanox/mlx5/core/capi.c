@@ -220,7 +220,7 @@ int mlx5_capi_initialize(struct mlx5_core_dev *dev,
 		/* If cannot be switch, then continue to operate in PCIe mode */
 		if (is_function0)
 			/* If switch to CAPI fails, return 0 and stays in PCIe mode */
-			if (cxl_check_and_switch_mode(pdev, CXL_BIMODE_CXL, 0, CXL_QUIRK_CX4)) {
+			if (cxl_check_and_switch_mode(pdev, CXL_BIMODE_CXL, 0)) {
 				err = 0;
 				goto out;
 			}
