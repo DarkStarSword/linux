@@ -276,9 +276,13 @@ static int mlx5_enable_msix(struct mlx5_core_dev *dev)
 	int nvec;
 	int i;
 
-	/* Huy Remove */
 #ifdef CONFIG_MLX5_CAPI
-	num_eqs = 15;
+	/*
+	 * Workaround for CX4 which is wired up such that only 4 bits of the
+	 * LISN is passed to the XSL, limiting it to 15 interrupts per PE.
+	 */
+	if (get_cxl_mode(dev))
+		WARN_ON(cxl_set_max_irqs_per_process(dev->pdev, 15));
 #endif
 
 	nvec = MLX5_CAP_GEN(dev, num_ports) * num_online_cpus() +
@@ -302,6 +306,11 @@ static int mlx5_enable_msix(struct mlx5_core_dev *dev)
 		return nvec;
 
 	table->num_comp_vectors = nvec - MLX5_EQ_VEC_COMP_BASE;
+
+#ifdef CONFIG_MLX5_CAPI
+	if (get_cxl_mode(dev))
+		mlx5_configure_msix_table_capi(dev->pdev);
+#endif
 
 	return 0;
 
