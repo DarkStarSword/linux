@@ -117,6 +117,7 @@ int mlx5_capi_cleanup(struct mlx5_core_dev *dev,
 
 	cxl_stop_context(capi_context);
 	cxl_stop_context(capi->direct_ctx);		
+	cxl_release_context(capi->direct_ctx);
 	return 0;
 }
 
