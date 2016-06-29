@@ -3,6 +3,7 @@
 #include <linux/mlx5/driver.h>
 #include <misc/cxl.h>
 #include <linux/pci.h>
+#include <linux/msi.h>
 #include "mlx5_core.h"
 
 #define CXL_PCI_VSEC_ID  0x1280
@@ -52,6 +53,47 @@ mlx5_capi_find_function0_dev(struct pci_dev *pdev)
                 	return dev;
 	}
 	return NULL;
+}
+
+/*
+ * In cxl mode, the CX4 uses a custom MSIX table format with the PE and LISN to
+ * route interrupts to the XSL instead of over the PCI bus.
+ */
+void mlx5_configure_msix_table_capi(struct pci_dev *pdev)
+{
+	struct cxl_context *ctx;
+	struct msi_desc *entry;
+	unsigned int virq;
+	int hwirq;
+	int afu_irq = 1;
+	struct msi_msg msg;
+
+	ctx = cxl_get_context(pdev);
+	if (WARN_ON(!ctx))
+		return;
+
+	for_each_pci_msi_entry(entry, pdev) {
+		hwirq = cxl_afu_irq_to_hwirq(ctx, afu_irq);
+		virq = irq_find_mapping(NULL, hwirq);
+
+		/*
+		 * Using an unconditional swab32 here as
+		 * pci_write_msi_msg will write these values as
+		 * little-endian, but the card expects these to be in
+		 * big-endian.
+		 */
+		msg.address_hi = 0;
+		msg.address_lo = 0;
+		msg.data = swab32((afu_irq << 28) | cxl_process_element(ctx));
+
+		pci_write_msi_msg(virq, &msg);
+
+		afu_irq++;
+		if (afu_irq > cxl_get_max_irqs_per_process(pdev)) {
+			ctx = cxl_next_context(ctx);
+			afu_irq = 1;
+		}
+	}
 }
 
 int mlx5_capi_cleanup(struct mlx5_core_dev *dev,
