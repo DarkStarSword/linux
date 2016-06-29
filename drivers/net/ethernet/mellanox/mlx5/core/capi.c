@@ -85,8 +85,6 @@ void mlx5_configure_msix_table_capi(struct pci_dev *pdev)
 		msg.address_hi = 0;
 		msg.address_lo = 0;
 		msg.data = swab32((afu_irq << 28) | cxl_process_element(ctx));
-		dev_info(&pdev->dev, "MSIX[%i] PE=%i LISN=%i msg.data=%08x\n",
-				afu_irq, cxl_process_element(ctx), afu_irq, msg.data);
 
 		pci_write_msi_msg(virq, &msg);
 

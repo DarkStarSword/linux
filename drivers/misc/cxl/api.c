@@ -424,7 +424,7 @@ int cxl_set_max_irqs_per_process(struct pci_dev *dev, int irqs)
 	if (IS_ERR(afu))
 		return -ENODEV;
 
-	if (afu->adapter->user_irqs > irqs)
+	if (irqs > afu->adapter->user_irqs)
 		return -EINVAL;
 
 	/* Limit user_irqs to prevent the user increasing this via sysfs */
