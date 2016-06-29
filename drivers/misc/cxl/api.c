@@ -79,7 +79,7 @@ int cxl_release_context(struct cxl_context *ctx)
 }
 EXPORT_SYMBOL_GPL(cxl_release_context);
 
-static irq_hw_number_t cxl_find_afu_irq(struct cxl_context *ctx, int num)
+irq_hw_number_t cxl_afu_irq_to_hwirq(struct cxl_context *ctx, int num)
 {
 	__u16 range;
 	int r;
@@ -93,6 +93,7 @@ static irq_hw_number_t cxl_find_afu_irq(struct cxl_context *ctx, int num)
 	}
 	return 0;
 }
+EXPORT_SYMBOL(cxl_afu_irq_to_hwirq);
 
 
 int cxl_set_priv(struct cxl_context *ctx, void *priv)
@@ -130,7 +131,7 @@ int cxl_allocate_afu_irqs(struct cxl_context *ctx, int num)
 		/* In a guest, the PSL interrupt is not multiplexed. It was
 		 * allocated above, and we need to set its handler
 		 */
-		hwirq = cxl_find_afu_irq(ctx, 0);
+		hwirq = cxl_afu_irq_to_hwirq(ctx, 0);
 		if (hwirq)
 			cxl_map_irq(ctx->afu->adapter, hwirq, cxl_ops->psl_interrupt, ctx, "psl");
 	}
@@ -151,7 +152,7 @@ void cxl_free_afu_irqs(struct cxl_context *ctx)
 	unsigned int virq;
 
 	if (!cpu_has_feature(CPU_FTR_HVMODE)) {
-		hwirq = cxl_find_afu_irq(ctx, 0);
+		hwirq = cxl_afu_irq_to_hwirq(ctx, 0);
 		if (hwirq) {
 			virq = irq_find_mapping(NULL, hwirq);
 			if (virq)
@@ -171,7 +172,7 @@ int cxl_map_afu_irq(struct cxl_context *ctx, int num,
 	/*
 	 * Find interrupt we are to register.
 	 */
-	hwirq = cxl_find_afu_irq(ctx, num);
+	hwirq = cxl_afu_irq_to_hwirq(ctx, num);
 	if (!hwirq)
 		return -ENOENT;
 
@@ -184,7 +185,7 @@ void cxl_unmap_afu_irq(struct cxl_context *ctx, int num, void *cookie)
 	irq_hw_number_t hwirq;
 	unsigned int virq;
 
-	hwirq = cxl_find_afu_irq(ctx, num);
+	hwirq = cxl_afu_irq_to_hwirq(ctx, num);
 	if (!hwirq)
 		return;
 

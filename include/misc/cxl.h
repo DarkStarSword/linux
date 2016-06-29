@@ -128,6 +128,11 @@ int cxl_map_afu_irq(struct cxl_context *cxl, int num,
 void cxl_unmap_afu_irq(struct cxl_context *cxl, int num, void *cookie);
 
 /*
+ * Look up a hardware IRQ from an AFU irq number
+ */
+irq_hw_number_t cxl_afu_irq_to_hwirq(struct cxl_context *ctx, int num);
+
+/*
  * Start work on the AFU. This starts an cxl context and associates it with a
  * task. task == NULL will make it a kernel context.
  */
