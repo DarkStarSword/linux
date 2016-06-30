@@ -715,6 +715,66 @@ err_put_dev:
 	return;
 }
 
+#define CXL_MAX_PCIEX_PARENT 2
+
+static int cxl_slot_is_switched(struct pci_dev *dev)
+{
+	struct device_node *np;
+	int depth = 0;
+	const __be32 *prop;
+
+	if (!(np = pci_device_to_OF_node(dev))) {
+		pr_err("cxl: np = NULL\n");
+		return -ENODEV;
+	}
+	of_node_get(np);
+	while (np) {
+		np = of_get_next_parent(np);
+		prop = of_get_property(np, "device_type", NULL);
+		if (!prop || strcmp((char *)prop, "pciex"))
+			break;
+		depth++;
+	}
+	of_node_put(np);
+	return (depth > CXL_MAX_PCIEX_PARENT);
+}
+
+bool cxl_slot_is_supported(struct pci_dev *dev, int flags)
+{
+	if (!cpu_has_feature(CPU_FTR_HVMODE))
+		return -ENODEV;
+
+	if ((flags & CXL_SLOT_FLAG_DMA) && (!pvr_version_is(PVR_POWER8NVL))) {
+		/*
+		 * CAPP DMA mode is technically supported on regular P8, but
+		 * will EEH if the card attempts to acccess memory < 4GB, which
+		 * we cannot realistically avoid. We might be able to work
+		 * around the issue, but until then return unsupported:
+		 */
+		return false;
+	}
+
+	if (cxl_slot_is_switched(dev))
+		return false;
+
+	/*
+	 * XXX: This gets a little tricky on regular P8 (not POWER8NVL) since
+	 * the CAPP can be connected to PHB 0, 1 or 2 on a first come first
+	 * served basis, which is racy to check from here. If we need to
+	 * support this in future we might need to consider having this
+	 * function effectively reserve it ahead of time.
+	 *
+	 * Currently, the only user of this API is the Mellanox CX4, which is
+	 * only supported on P8NVL due to the above mentioned limitation of
+	 * CAPP DMA mode and therefore does not need to worry about thi. If the
+	 * issue with CAPP DMA mode is later worked around on P8 we might need
+	 * to revisit this.
+	 */
+
+	return true;
+}
+EXPORT_SYMBOL_GPL(cxl_slot_is_supported);
+
 int cxl_check_and_switch_mode(struct pci_dev *dev, int mode, int vsec)
 {
 	struct cxl_switch_work *work;
@@ -722,6 +782,9 @@ int cxl_check_and_switch_mode(struct pci_dev *dev, int mode, int vsec)
 	int rc;
 
 	if (!cpu_has_feature(CPU_FTR_HVMODE))
+		return -ENODEV;
+
+	if (cxl_slot_is_switched(dev))
 		return -ENODEV;
 
 	if (!vsec) {
@@ -1572,30 +1635,6 @@ static void cxl_pci_remove_adapter(struct cxl *adapter)
 	cxl_deconfigure_adapter(adapter);
 
 	device_unregister(&adapter->dev);
-}
-
-#define CXL_MAX_PCIEX_PARENT 2
-
-static int cxl_slot_is_switched(struct pci_dev *dev)
-{
-	struct device_node *np;
-	int depth = 0;
-	const __be32 *prop;
-
-	if (!(np = pci_device_to_OF_node(dev))) {
-		pr_err("cxl: np = NULL\n");
-		return -ENODEV;
-	}
-	of_node_get(np);
-	while (np) {
-		np = of_get_next_parent(np);
-		prop = of_get_property(np, "device_type", NULL);
-		if (!prop || strcmp((char *)prop, "pciex"))
-			break;
-		depth++;
-	}
-	of_node_put(np);
-	return (depth > CXL_MAX_PCIEX_PARENT);
 }
 
 static int cxl_probe(struct pci_dev *dev, const struct pci_device_id *id)
