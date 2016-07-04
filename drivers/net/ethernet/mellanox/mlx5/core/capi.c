@@ -61,19 +61,18 @@ mlx5_capi_find_function0_dev(struct pci_dev *pdev)
  */
 void mlx5_configure_msix_table_capi(struct pci_dev *pdev)
 {
-	struct cxl_context *ctx;
+	struct cxl_context *ctx = NULL;
 	struct msi_desc *entry;
 	unsigned int virq;
 	int hwirq;
-	int afu_irq = 1;
+	int afu_irq = 0;
 	struct msi_msg msg;
 
-	ctx = cxl_get_context(pdev);
-	if (WARN_ON(!ctx))
-		return;
-
 	for_each_pci_msi_entry(entry, pdev) {
-		hwirq = cxl_afu_irq_to_hwirq(ctx, afu_irq);
+		hwirq = cxl_next_msi_hwirq(pdev, &ctx, &afu_irq);
+		if (WARN_ON(hwirq < 0))
+			return;
+
 		virq = irq_find_mapping(NULL, hwirq);
 
 		/*
@@ -87,12 +86,6 @@ void mlx5_configure_msix_table_capi(struct pci_dev *pdev)
 		msg.data = swab32((afu_irq << 28) | cxl_process_element(ctx));
 
 		pci_write_msi_msg(virq, &msg);
-
-		afu_irq++;
-		if (afu_irq > cxl_get_max_irqs_per_process(pdev)) {
-			ctx = cxl_next_context(ctx);
-			afu_irq = 1;
-		}
 	}
 }
 
