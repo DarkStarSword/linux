@@ -12,6 +12,9 @@
 
 #ifdef CONFIG_CXL_BASE
 
+#include <linux/pci.h>
+#include <misc/cxl.h>
+
 #define CXL_IRQ_RANGES 4
 
 struct cxl_irq_ranges {
