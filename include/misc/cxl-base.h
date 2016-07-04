@@ -43,6 +43,8 @@ struct cxl_afu *cxl_afu_get(struct cxl_afu *afu);
 void cxl_afu_put(struct cxl_afu *afu);
 void cxl_slbia(struct mm_struct *mm);
 bool cxl_pci_associate_default_context(struct pci_dev *dev, struct cxl_afu *afu);
+int cxl_cx4_setup_msi_irqs(struct pci_dev *pdev, int nvec, int type);
+void cxl_cx4_teardown_msi_irqs(struct pci_dev *pdev);
 
 #else /* CONFIG_CXL_BASE */
 
@@ -51,6 +53,8 @@ static inline struct cxl_afu *cxl_afu_get(struct cxl_afu *afu) { return NULL; }
 static inline void cxl_afu_put(struct cxl_afu *afu) {}
 static inline void cxl_slbia(struct mm_struct *mm) {}
 static inline bool cxl_pci_associate_default_context(struct pci_dev *dev, struct cxl_afu *afu) { return false; }
+static inline int cxl_cx4_setup_msi_irqs(struct pci_dev *pdev, int nvec, int type) { return -ENODEV; }
+static inline void cxl_cx4_teardown_msi_irqs(struct pci_dev *pdev) {}
 
 #endif /* CONFIG_CXL_BASE */
 
