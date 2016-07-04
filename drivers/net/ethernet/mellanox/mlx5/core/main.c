@@ -1409,11 +1409,11 @@ static void remove_one(struct pci_dev *pdev)
 		return;
 	}
 	mlx5_health_cleanup(dev);
-	mlx5_pci_close(dev, priv);
-	pci_set_drvdata(pdev, NULL);
 #ifdef CONFIG_MLX5_CAPI
 	mlx5_capi_cleanup(dev, pdev);
 #endif
+	mlx5_pci_close(dev, priv);
+	pci_set_drvdata(pdev, NULL);
 	kfree(dev);
 }
 
