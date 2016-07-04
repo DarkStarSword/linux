@@ -111,6 +111,7 @@ static inline void cxl_slbia_core(struct mm_struct *mm)
 static struct cxl_calls cxl_calls = {
 	.cxl_slbia = cxl_slbia_core,
 	.cxl_pci_associate_default_context = _cxl_pci_associate_default_context,
+	.cxl_next_msi_hwirq = _cxl_next_msi_hwirq,
 	.owner = THIS_MODULE,
 };
 
