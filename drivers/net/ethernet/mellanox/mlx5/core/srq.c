@@ -96,9 +96,6 @@ static void rmpc_srqc_reformat(void *srqc, void *rmpc, bool srqc_to_rmpc)
 			MLX5_SET(rmpc, rmpc, state, MLX5_GET(srqc, srqc, state));
 		}
 
-#ifdef CONFIG_MLX5_CAPI
-		MLX5_SET(wq,   wq, uar_page,      MLX5_GET(srqc, srqc, pe_id) << (8-(PAGE_SHIFT-12)));
-#endif
 		MLX5_SET(wq,   wq, wq_signature,  MLX5_GET(srqc,  srqc, wq_signature));
 		MLX5_SET(wq,   wq, log_wq_pg_sz,  MLX5_GET(srqc,  srqc, log_page_size));
 		MLX5_SET(wq,   wq, log_wq_stride, MLX5_GET(srqc,  srqc, log_rq_stride) + 4);
@@ -244,6 +241,12 @@ static int create_xrc_srq_cmd(struct mlx5_core_dev *dev,
 
 	memcpy(xrc_srqc, srqc, MLX5_ST_SZ_BYTES(srqc));
 	memcpy(pas, in->pas, pas_size);
+
+#ifdef CONFIG_MLX5_CAPI
+	MLX5_SET(create_xrc_srq_in, create_in, pe_id,
+		 be32_to_cpu(in->pe_id));
+#endif
+
 	MLX5_SET(create_xrc_srq_in, create_in, opcode,
 		 MLX5_CMD_OP_CREATE_XRC_SRQ);
 
@@ -337,6 +340,9 @@ static int create_rmp_cmd(struct mlx5_core_dev *dev, struct mlx5_core_srq *srq,
 	int pas_size;
 	int inlen;
 	int err;
+#ifdef CONFIG_MLX5_CAPI
+	void *wq;
+#endif
 
 	srqc = MLX5_ADDR_OF(create_srq_in, in, srq_context_entry);
 	pas_size = get_pas_size(srqc);
@@ -349,6 +355,11 @@ static int create_rmp_cmd(struct mlx5_core_dev *dev, struct mlx5_core_srq *srq,
 
 	memcpy(MLX5_ADDR_OF(rmpc, rmpc, wq.pas), in->pas, pas_size);
 	rmpc_srqc_reformat(srqc, rmpc, true);
+
+#ifdef CONFIG_MLX5_CAPI
+	wq = MLX5_ADDR_OF(rmpc, rmpc, wq);
+	MLX5_SET(wq, wq, pe_id, be32_to_cpu(in->pe_id));
+#endif
 
 	err = mlx5_core_create_rmp(dev, create_in, inlen, &srq->srqn);
 

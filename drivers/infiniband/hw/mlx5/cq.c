@@ -37,6 +37,10 @@
 #include "mlx5_ib.h"
 #include "user.h"
 
+#ifdef CONFIG_MLX5_CAPI
+#include "capi.h"
+#endif
+
 static void mlx5_ib_cq_comp(struct mlx5_core_cq *cq)
 {
 	struct ib_cq *ibcq = &to_mibcq(cq)->ibcq;
@@ -883,8 +887,13 @@ struct ib_cq *mlx5_ib_create_cq(struct ib_device *ibdev,
 	cqb->ctx.c_eqn = cpu_to_be16(eqn);
 
 #ifdef CONFIG_MLX5_CAPI
-	if (get_cxl_mode(dev->mdev))
+	if (get_cxl_mode(dev->mdev)) {
+		if (context)
+			cqb->pe_id = cpu_to_be32(mlx5_capi_get_pe_id(context));
+		else
+			cqb->pe_id = cpu_to_be32(dev->mdev->priv.capi.default_pe);
 		cqb->ctx.db_record_addr = cpu_to_be64(cq->db.virt_addr);
+	}
 	else
 		cqb->ctx.db_record_addr = cpu_to_be64(cq->db.dma);
 #else

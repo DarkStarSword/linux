@@ -507,8 +507,8 @@ struct mlx5_init_seg {
 	__be32			fw_rev;
 	__be32			cmdif_rev_fw_sub;
 #ifdef CONFIG_MLX5_CAPI
-	__be32			rsvd0[1];
-	__be32                  direct_default_pe;
+	__be32			direct_pe;
+	__be32                  default_pe;
 #else
 	__be32                  rsvd0[2];
 #endif
@@ -862,12 +862,7 @@ struct mlx5_srq_ctx {
 	__be32			pgoff_cqn;
 	u8			rsvd1[4];
 	u8			log_pg_sz;
-#ifdef CONFIG_MLX5_CAPI
-	u8			rsvd2[5];
-	__be16			pe_id;
-#else
 	u8                      rsvd2[7];
-#endif
 	__be32			pd;
 	__be16			lwm;
 	__be16			wqe_cnt;
@@ -880,7 +875,12 @@ struct mlx5_create_srq_mbox_in {
 	__be32			input_srqn;
 	u8			rsvd0[4];
 	struct mlx5_srq_ctx	ctx;
+#ifdef CONFIG_MLX5_CAPI
+	u8                      rsvd1[204];
+	__be32                  pe_id;
+#else
 	u8			rsvd1[208];
+#endif
 	__be64			pas[0];
 };
 
@@ -954,7 +954,12 @@ struct mlx5_create_cq_mbox_in {
 	__be32			input_cqn;
 	u8			rsvdx[4];
 	struct mlx5_cq_context	ctx;
+#ifdef CONFIG_MLX5_CAPI
+	u8                      rsvd6[188];
+	__be32                  pe_id;
+#else
 	u8			rsvd6[192];
+#endif
 	__be64			pas[0];
 };
 
@@ -1047,7 +1052,12 @@ struct mlx5_create_eq_mbox_in {
 	struct mlx5_eq_context	ctx;
 	u8			rsvd2[8];
 	__be64			events_mask;
+#ifdef CONFIG_MLX5_CAPI
+	u8                      rsvd3[172];
+	__be32                  pe_id;
+#else
 	u8			rsvd3[176];
+#endif
 	__be64			pas[0];
 };
 
@@ -1115,19 +1125,18 @@ struct mlx5_mkey_seg {
 	u8		flags;
 	u8		version;
 	__be32		qpn_mkey7_0;
+#ifdef CONFIG_MLX5_CAPI
+	__be32          pe_id;
+#else
 	u8		rsvd1[4];
+#endif
 	__be32		flags_pd;
 	__be64		start_addr;
 	__be64		len;
 	__be32		bsfs_octo_size;
 	u8		rsvd2[16];
 	__be32		xlt_oct_size;
-#ifdef CONFIG_MLX5_CAPI
-	__be16          pe_id;
-	u8		rsvd3[1];
-#else
 	u8              rsvd3[3];
-#endif
 	u8		log2_page_size;
 	u8		rsvd4[4];
 };

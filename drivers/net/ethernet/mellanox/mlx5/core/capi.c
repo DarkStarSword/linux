@@ -153,8 +153,9 @@ int mlx5_capi_setup(struct mlx5_core_dev *dev, struct pci_dev *pdev)
 
 	/* Update the PE to FW */
 	wmb();
-	iowrite32be((capi->direct_pe << 16) | capi->default_pe,
-		    &dev->iseg->direct_default_pe);
+	iowrite32be(capi->default_pe, &dev->iseg->default_pe);
+	mmiowb();
+	iowrite32be(capi->direct_pe, &dev->iseg->direct_pe);
 	mmiowb();
 
 	mlx5_core_dbg(dev, "mlx5_capi_setup vsec=%04x direct_pe=%04x default_pe=%04x cxl_mode=%d\n",
@@ -212,14 +213,10 @@ int mlx5_capi_initialize(struct mlx5_core_dev *dev,
 		/* Huy to do Query CAPI switch capability before do wth switching */
 		/* If cannot be switch, then continue to operate in PCIe mode */
 		if (is_function0)
-			/* If switch to CAPI fails, return 0 and stays in PCIe mode */
-			if (cxl_check_and_switch_mode(pdev, CXL_BIMODE_CXL, 0)) {
-				err = 0;
-				goto out;
-			}
-
-		/* Quit our driver to move the card into CXL mode */
-		err = -EPERM;
+			err = cxl_check_and_switch_mode(pdev, CXL_BIMODE_CXL, 0);
+		else
+			/* Quit our driver to move the card into CXL mode */
+			err = -EPERM;
 		goto out;
 	} else {
 		/* our driver does not control function 0 */

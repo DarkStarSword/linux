@@ -42,15 +42,11 @@ enum {
 	NUM_LOW_LAT_UUARS	= 4,
 };
 
-
 struct mlx5_alloc_uar_mbox_in {
 	struct mlx5_inbox_hdr	hdr;
 #ifdef CONFIG_MLX5_CAPI
-	u8                      rsvd1;
-	u8                      pe_id_msB;
-	u8                      pe_id_lsB;
-	u8                      rsvd2;
-	u8                      rsvd3[4];
+	__be32                  pe_id;
+	u8                      rsvd1[4];
 #else
 	u8                      rsvd[8];
 #endif
@@ -90,8 +86,7 @@ int mlx5_cmd_alloc_uar(struct mlx5_core_dev *dev, u32 *uarn)
 #ifdef CONFIG_MLX5_CAPI
 	if (get_cxl_mode(dev)) {
 		mlx5_core_dbg(dev, "mlx5_cmd_alloc_uar pe_id %x\n", pe_id);
-		in.pe_id_msB = (u8)((pe_id >> 8) & 0xFF);
-		in.pe_id_lsB = (u8)(pe_id & 0xFF);
+		in.pe_id = cpu_to_be32(pe_id);
 	}
 #endif
 

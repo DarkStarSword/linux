@@ -398,6 +398,10 @@ static int mlx5e_enable_rq(struct mlx5e_rq *rq, struct mlx5e_rq_param *param)
 	MLX5_SET64(wq, wq,  dbr_addr,		rq->wq_ctrl.db.dma);
 
 #ifdef CONFIG_MLX5_CAPI
+	if (get_cxl_mode(mdev))
+		MLX5_SET(wq, wq, pe_id,
+			 cpu_to_be32(mdev->priv.capi.default_pe)); 
+
 	mlx5_fill_page_array(mdev,
 			     &rq->wq_ctrl.buf,
 			     (__be64 *)MLX5_ADDR_OF(wq, wq, pas));
@@ -699,6 +703,10 @@ static int mlx5e_enable_sq(struct mlx5e_sq *sq, struct mlx5e_sq_param *param)
 	MLX5_SET64(wq, wq, dbr_addr,      sq->wq_ctrl.db.dma);
 
 #ifdef CONFIG_MLX5_CAPI
+	if (get_cxl_mode(mdev))
+		MLX5_SET(wq, wq, pe_id,
+			 cpu_to_be32(mdev->priv.capi.default_pe)); 
+
 	mlx5_fill_page_array(mdev,
 			     &sq->wq_ctrl.buf,
 			     (__be64 *)MLX5_ADDR_OF(wq, wq, pas));
@@ -878,6 +886,10 @@ static int mlx5e_enable_cq(struct mlx5e_cq *cq, struct mlx5e_cq_param *param)
 	struct mlx5_core_cq *mcq = &cq->mcq;
 
 	void *in;
+
+#ifdef CONFIG_MLX5_CAPI
+	struct mlx5_create_cq_mbox_in *cq_in;
+#endif
 	void *cqc;
 	int inlen;
 	unsigned int irqn_not_used;
@@ -895,6 +907,11 @@ static int mlx5e_enable_cq(struct mlx5e_cq *cq, struct mlx5e_cq_param *param)
 	memcpy(cqc, param->cqc, sizeof(param->cqc));
 
 #ifdef CONFIG_MLX5_CAPI
+	if (get_cxl_mode(mdev)) {
+		cq_in = (mlx5_create_cq_mbox_in *)in;
+		cq_in->pe_id = cpu_to_be32(mdev->priv.capi.default_pe);
+	}
+
 	mlx5_fill_page_array(mdev,
 			     &cq->wq_ctrl.buf,
 			     (__be64 *)MLX5_ADDR_OF(create_cq_in, in, pas));
@@ -2974,7 +2991,7 @@ static int mlx5e_create_mkey(struct mlx5e_priv *priv, u32 pdn,
 
 #ifdef CONFIG_MLX5_CAPI
 	if (get_cxl_mode(priv->mdev))
-		in->seg.pe_id = cpu_to_be16(priv->mdev->priv.capi.default_pe);
+		in->seg.pe_id = cpu_to_be32(priv->mdev->priv.capi.default_pe);
 #endif
 	err = mlx5_core_create_mkey(mdev, mkey, in, sizeof(*in), NULL, NULL,
 				    NULL);

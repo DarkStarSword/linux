@@ -362,11 +362,10 @@ struct ib_srq *mlx5_ib_create_srq(struct ib_pd *pd,
 	in->ctx.pd = cpu_to_be32(to_mpd(pd)->pdn);
 
 #ifdef CONFIG_MLX5_CAPI
-	in->ctx.pe_id = cpu_to_be16(pe_id);
-
-	if (get_cxl_mode(dev->mdev))
+	if (get_cxl_mode(dev->mdev)) {
+		in->pe_id = cpu_to_be32(pe_id);
 		in->ctx.db_record = cpu_to_be64(srq->db.virt_addr);
-	else	
+	} else	
 		in->ctx.db_record = cpu_to_be64(srq->db.dma);
 #else
 	in->ctx.db_record = cpu_to_be64(srq->db.dma);

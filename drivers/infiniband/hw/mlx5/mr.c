@@ -208,7 +208,7 @@ static int add_keys(struct mlx5_ib_dev *dev, int c, int num)
 		ent->pending++;
 		spin_unlock_irq(&ent->lock);
 #ifdef CONFIG_MLX5_CAPI
-		in->seg.pe_id = cpu_to_be16(dev->mdev->priv.capi.default_pe);
+		in->seg.pe_id = cpu_to_be32(dev->mdev->priv.capi.default_pe);
 #endif
 		err = mlx5_core_create_mkey(dev->mdev, &mr->mmkey, in,
 					    sizeof(*in), reg_mr_callback,
@@ -700,7 +700,7 @@ struct ib_mr *mlx5_ib_get_dma_mr(struct ib_pd *pd, int acc)
 	seg->start_addr = 0;
 
 #ifdef CONFIG_MLX5_CAPI
-	in->seg.pe_id = cpu_to_be16(mlx5_capi_get_default_pe_id(pd));
+	in->seg.pe_id = cpu_to_be32(mlx5_capi_get_default_pe_id(pd));
 #endif
 
 	err = mlx5_core_create_mkey(mdev, &mr->mmkey, in, sizeof(*in), NULL, NULL,
@@ -1185,7 +1185,7 @@ static struct mlx5_ib_mr *reg_create(struct ib_mr *ibmr, struct ib_pd *pd,
 
 #ifdef CONFIG_MLX5_CAPI
 	in->seg.pe_id =
-		cpu_to_be16(mlx5_capi_get_pe_id_from_pd(pd));
+		cpu_to_be32(mlx5_capi_get_pe_id_from_pd(pd));
 #endif
 
 	err = mlx5_core_create_mkey(dev->mdev, &mr->mmkey, in, inlen, NULL,
@@ -1704,7 +1704,7 @@ struct ib_mr *mlx5_ib_alloc_mr(struct ib_pd *pd,
 
 #ifdef CONFIG_MLX5_CAPI
 	in->seg.pe_id =
-		cpu_to_be16(mlx5_capi_get_pe_id_from_pd(pd));
+		cpu_to_be32(mlx5_capi_get_pe_id_from_pd(pd));
 #endif
 
 	err = mlx5_core_create_mkey(dev->mdev, &mr->mmkey, in, sizeof(*in),
@@ -1786,7 +1786,7 @@ struct ib_mw *mlx5_ib_alloc_mw(struct ib_pd *pd, enum ib_mw_type type,
 
 #ifdef CONFIG_MLX5_CAPI
 	in->seg.pe_id =
-		cpu_to_be16(mlx5_capi_get_pe_id_from_pd(pd));
+		cpu_to_be32(mlx5_capi_get_pe_id_from_pd(pd));
 #endif
 
 	err = mlx5_core_create_mkey(dev->mdev, &mw->mmkey, in, sizeof(*in),

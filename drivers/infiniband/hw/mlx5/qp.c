@@ -968,6 +968,10 @@ static int create_raw_packet_qp_sq(struct mlx5_ib_dev *dev,
 	int ncont = 0;
 	u32 offset = 0;
 
+#ifdef CONFIG_MLX5_CAPI
+	struct mlx5_create_qp_mbox_in *qpin_mbox = (struct mlx5_create_qp_mbox_in *)qpin;
+#endif
+
 	err = mlx5_ib_umem_get(dev, pd, ubuffer->buf_addr, ubuffer->buf_size,
 			       &sq->ubuffer.umem, &npages, &page_shift,
 			       &ncont, &offset);
@@ -1000,11 +1004,14 @@ static int create_raw_packet_qp_sq(struct mlx5_ib_dev *dev,
 	MLX5_SET(wq, wq, page_offset, offset);
 
 	pas = (__be64 *)MLX5_ADDR_OF(wq, wq, pas);
+
 #ifdef CONFIG_MLX5_CAPI
+	MLX5_SET(wq, wq, pe_id, be32_to_cpu(qpin_mbox->pe_id));
 	mlx5_ib_populate_pas(dev, sq->ubuffer.umem, page_shift, pas, 0, 1);
 #else
 	mlx5_ib_populate_pas(dev, sq->ubuffer.umem, page_shift, pas, 0);
 #endif
+
 	err = mlx5_core_create_sq_tracked(dev->mdev, in, inlen, &sq->base.mqp);
 
 	kvfree(in);
@@ -1057,6 +1064,10 @@ static int create_raw_packet_qp_rq(struct mlx5_ib_dev *dev,
 	int err;
 	u32 rq_pas_size = get_rq_pas_size(qpc);
 
+#ifdef CONFIG_MLX5_CAPI
+	struct mlx5_create_qp_mbox_in *qpin_mbox = (struct mlx5_create_qp_mbox_in *)qpin;
+#endif
+
 	inlen = MLX5_ST_SZ_BYTES(create_rq_in) + rq_pas_size;
 	in = mlx5_vzalloc(inlen);
 	if (!in)
@@ -1087,6 +1098,10 @@ static int create_raw_packet_qp_rq(struct mlx5_ib_dev *dev,
 	pas = (__be64 *)MLX5_ADDR_OF(wq, wq, pas);
 	qp_pas = (__be64 *)MLX5_ADDR_OF(create_qp_in, qpin, pas);
 	memcpy(pas, qp_pas, rq_pas_size);
+
+#ifdef CONFIG_MLX5_CAPI
+	MLX5_SET(wq, wq, pe_id, be32_to_cpu(qpin_mbox->pe_id));
+#endif
 
 	err = mlx5_core_create_rq_tracked(dev->mdev, in, inlen, &rq->base.mqp);
 
@@ -1464,6 +1479,15 @@ static int create_qp_common(struct mlx5_ib_dev *dev, struct ib_pd *pd,
 		MLX5_SET(qpc, qpc, ulp_stateless_offload_mode, 1);
 		qp->flags |= MLX5_IB_QP_LSO;
 	}
+
+#ifdef CONFIG_MLX5_CAPI
+		if (get_cxl_mode(mdev)) {
+			if(pd)
+				in->pe_id = cpu_to_be32(mlx5_capi_get_pe_id_from_pd(pd));
+			else
+				in->pe_id = cpu_to_be32(mdev->priv.capi.default_pe);
+		}
+#endif
 
 	if (init_attr->qp_type == IB_QPT_RAW_PACKET) {
 		qp->raw_packet_qp.sq.ubuffer.buf_addr = ucmd.sq_buf_addr;

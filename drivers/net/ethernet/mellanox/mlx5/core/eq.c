@@ -374,6 +374,9 @@ int mlx5_create_map_eq(struct mlx5_core_dev *dev, struct mlx5_eq *eq, u8 vecidx,
 	memset(&out, 0, sizeof(out));
 
 #ifdef CONFIG_MLX5_CAPI
+	if (get_cxl_mode(dev))
+		in->pe_id = cpu_to_be32(dev->priv.capi.default_pe);
+
 	mlx5_fill_page_array(dev, &eq->buf, in->pas);
 #else
 	mlx5_fill_page_array(&eq->buf, in->pas);

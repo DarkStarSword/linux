@@ -531,7 +531,12 @@ struct mlx5_create_qp_mbox_in {
 	__be32			opt_param_mask;
 	u8			rsvd1[4];
 	struct mlx5_qp_context	ctx;
+#ifdef CONFIG_MLX5_CAPI
+	u8                      rsvd3[12];
+	__be32                  pe_id;
+#else
 	u8			rsvd3[16];
+#endif
 	__be64			pas[0];
 };
 

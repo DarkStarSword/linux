@@ -1035,7 +1035,12 @@ struct mlx5_ifc_wq_bits {
 	u8         reserved_at_139[0x4];
 	u8         log_wqe_stride_size[0x3];
 
-	u8         reserved_at_140[0x4c0];
+#ifdef CONFIG_MLX5_CAPI
+	u8         reserved_at_140[0x4A0];
+	u8         pe_id[0x20];
+#else
+	u8         reserved_at_140[0x4C0];
+#endif
 
 	struct mlx5_ifc_cmd_pas_bits pas[0];
 };
@@ -2210,12 +2215,7 @@ struct mlx5_ifc_srqc_bits {
 	u8         log_page_size[0x6];
 	u8         reserved_at_88[0x18];
 
-#ifdef CONFIG_MLX5_CAPI
-	u8         reserved_at_a0[0x10];
-	u8         pe_id[0x10];
-#else
 	u8         reserved_at_a0[0x20];
-#endif
 
 	u8         reserved_at_c0[0x8];
 	u8         pd[0x18];
@@ -5617,7 +5617,12 @@ struct mlx5_ifc_create_xrc_srq_in_bits {
 
 	struct mlx5_ifc_xrc_srqc_bits xrc_srq_context_entry;
 
+#ifdef CONFIG_MLX5_CAPI
+	u8         reserved_at_280[0x5E0];
+	u8         pe_id[0x20];
+#else
 	u8         reserved_at_280[0x600];
+#endif
 
 	u8         pas[0][0x40];
 };
@@ -5693,7 +5698,12 @@ struct mlx5_ifc_create_srq_in_bits {
 
 	struct mlx5_ifc_srqc_bits srq_context_entry;
 
+#ifdef CONFIG_MLX5_CAPI
+	u8         reserved_at_280[0x5E0];
+	u8         pe_id[0x20];
+#else
 	u8         reserved_at_280[0x600];
+#endif
 
 	u8         pas[0][0x40];
 };
