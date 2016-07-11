@@ -575,11 +575,12 @@ static int mlx5_ib_query_device(struct ib_device *ibdev,
 	if (MLX5_CAP_GEN(mdev, pg))
 		props->device_cap_flags |= IB_DEVICE_ON_DEMAND_PAGING;
 	props->odp_caps = dev->odp_caps;
-#ifdef CONFIG_MLX5_CAPI
-	/* Disable ODP if CAPI is on */
-	if (get_cxl_mode(mdev))
-		props->device_cap_flags &= (~IB_DEVICE_ON_DEMAND_PAGING);
 #endif
+
+#ifdef CONFIG_MLX5_CAPI
+	/* Enable ODP flag if CAPI is on */
+	if (get_cxl_mode(mdev))
+		props->device_cap_flags |= IB_DEVICE_ON_DEMAND_PAGING;
 #endif
 
 	if (MLX5_CAP_GEN(mdev, cd))
@@ -998,6 +999,11 @@ static struct ib_ucontext *mlx5_ib_alloc_ucontext(struct ib_device *ibdev,
 
 #ifdef CONFIG_INFINIBAND_ON_DEMAND_PAGING
 	context->ibucontext.invalidate_range = &mlx5_ib_invalidate_range;
+#endif
+
+#ifdef CONFIG_MLX5_CAPI
+	if (get_cxl_mode(dev->mdev))
+		context->ibucontext.invalidate_range = NULL;
 #endif
 
 	if (MLX5_CAP_GEN(dev->mdev, log_max_transport_domain)) {

@@ -888,7 +888,8 @@ static struct ib_umem *mr_umem_get(struct ib_pd *pd, u64 start, u64 length,
 	struct ib_umem *umem;
 
 #ifdef CONFIG_MLX5_CAPI
-	if (get_cxl_mode(dev->mdev))
+	/* Don't pin memory if in CAPI mode and ODP flag is set */
+	if (get_cxl_mode(dev->mdev) && (access_flags & IB_ACCESS_ON_DEMAND))
 		umem =  mr_umem_get_nopin(dev, pd, start, length,
 					  access_flags,
 					  npages, page_shift,
@@ -1254,7 +1255,12 @@ struct ib_mr *mlx5_ib_reg_user_mr(struct ib_pd *pd, u64 start, u64 length,
 			mlx5_ib_dbg(dev, "cache empty for order %d", order);
 			mr = NULL;
 		}
+#ifdef CONFIG_MLX5_CAPI
+	/* Allow big ODP MR when in capi mode */
+	} else if (access_flags & IB_ACCESS_ON_DEMAND) && (!get_cxl_mode(dev->mdev)) {
+#else
 	} else if (access_flags & IB_ACCESS_ON_DEMAND) {
+#endif
 		err = -EINVAL;
 		pr_err("Got MR registration for ODP MR > 512MB, not supported for Connect-IB");
 		goto error;
