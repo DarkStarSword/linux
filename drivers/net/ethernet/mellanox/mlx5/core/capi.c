@@ -298,8 +298,11 @@ int mlx5_capi_initialize(struct mlx5_core_dev *dev,
 		goto out;
 
 	if (!capi->cxl_mode) {
-		/* Huy to do Query CAPI switch capability before do wth switching */
-		/* If cannot be switch, then continue to operate in PCIe mode */
+		if (!cxl_slot_is_supported(capi_pdev, 0))
+			/* Huy to do: Add flag CXL_SLOT_FLAG_DMA to return error for Firestone */
+			/* card cannot be switched. Continue in PCIe mode */
+				goto out;
+
 		if (is_function0)
 			err = cxl_check_and_switch_mode(pdev, CXL_BIMODE_CXL, 0);
 		else
