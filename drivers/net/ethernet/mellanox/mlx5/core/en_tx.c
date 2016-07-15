@@ -65,6 +65,13 @@ void mlx5e_send_nop(struct mlx5e_sq *sq, bool notify_hw)
 static inline void mlx5e_tx_dma_unmap(struct device *pdev,
 				      struct mlx5e_sq_dma *dma)
 {
+#ifdef CONFIG_MLX5_CAPI
+	struct mlx5e_sq *sq = container_of(&pdev, struct mlx5e_sq, pdev);
+
+	if (get_cxl_mode(sq->cq.priv->mdev))
+		return;
+#endif
+
 	switch (dma->type) {
 	case MLX5E_DMA_MAP_SINGLE:
 		dma_unmap_single(pdev, dma->addr, dma->size, DMA_TO_DEVICE);
@@ -96,6 +103,11 @@ static inline struct mlx5e_sq_dma *mlx5e_dma_get(struct mlx5e_sq *sq, u32 i)
 static void mlx5e_dma_unmap_wqe_err(struct mlx5e_sq *sq, u8 num_dma)
 {
 	int i;
+
+#ifdef CONFIG_MLX5_CAPI
+	if (get_cxl_mode(sq->cq.priv->mdev))
+		return;
+#endif
 
 	for (i = 0; i < num_dma; i++) {
 		struct mlx5e_sq_dma *last_pushed_dma =
@@ -249,10 +261,21 @@ static netdev_tx_t mlx5e_sq_xmit(struct mlx5e_sq *sq, struct sk_buff *skb)
 
 	headlen = skb_len - skb->data_len;
 	if (headlen) {
+#ifdef CONFIG_MLX5_CAPI
+		if (get_cxl_mode(sq->cq.priv->mdev))
+			dma_addr = (dma_addr_t) skb_data;
+		else {
+			dma_addr = dma_map_single(sq->pdev, skb_data, headlen,
+						  DMA_TO_DEVICE);
+			if (unlikely(dma_mapping_error(sq->pdev, dma_addr)))
+				goto dma_unmap_wqe_err;
+		}
+#else
 		dma_addr = dma_map_single(sq->pdev, skb_data, headlen,
 					  DMA_TO_DEVICE);
 		if (unlikely(dma_mapping_error(sq->pdev, dma_addr)))
 			goto dma_unmap_wqe_err;
+#endif
 
 		dseg->addr       = cpu_to_be64(dma_addr);
 		dseg->lkey       = sq->mkey_be;
@@ -268,10 +291,21 @@ static netdev_tx_t mlx5e_sq_xmit(struct mlx5e_sq *sq, struct sk_buff *skb)
 		struct skb_frag_struct *frag = &skb_shinfo(skb)->frags[i];
 		int fsz = skb_frag_size(frag);
 
+#ifdef CONFIG_MLX5_CAPI
+		if (get_cxl_mode(sq->cq.priv->mdev))
+			dma_addr = (u64)(page_address(skb_frag_page(frag))) + frag->page_offset;
+		else {
+			dma_addr = skb_frag_dma_map(sq->pdev, frag, 0, fsz,
+						    DMA_TO_DEVICE);
+			if (unlikely(dma_mapping_error(sq->pdev, dma_addr)))
+				goto dma_unmap_wqe_err;
+		}
+#else
 		dma_addr = skb_frag_dma_map(sq->pdev, frag, 0, fsz,
 					    DMA_TO_DEVICE);
 		if (unlikely(dma_mapping_error(sq->pdev, dma_addr)))
 			goto dma_unmap_wqe_err;
+#endif
 
 		dseg->addr       = cpu_to_be64(dma_addr);
 		dseg->lkey       = sq->mkey_be;

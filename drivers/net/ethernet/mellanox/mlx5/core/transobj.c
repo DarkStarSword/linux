@@ -82,7 +82,6 @@ int mlx5_core_create_rq(struct mlx5_core_dev *dev, u32 *in, int inlen, u32 *rqn)
 	err = mlx5_cmd_exec_check_status(dev, in, inlen, out, sizeof(out));
 	if (!err)
 		*rqn = MLX5_GET(create_rq_out, out, rqn);
-
 	return err;
 }
 
@@ -134,7 +133,7 @@ int mlx5_core_create_sq(struct mlx5_core_dev *dev, u32 *in, int inlen, u32 *sqn)
 	err = mlx5_cmd_exec_check_status(dev, in, inlen, out, sizeof(out));
 	if (!err)
 		*sqn = MLX5_GET(create_sq_out, out, sqn);
-
+	
 	return err;
 }
 

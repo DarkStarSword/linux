@@ -48,6 +48,10 @@
 #include "mlx5_core.h"
 #include "en_stats.h"
 
+#ifdef CONFIG_MLX5_CAPI
+#include "capi.h"
+#endif
+
 #define MLX5_SET_CFG(p, f, v) MLX5_SET(create_flow_group_in, p, f, v)
 
 #define MLX5E_MAX_NUM_TC	8
@@ -354,6 +358,10 @@ struct mlx5e_sq {
 	struct mlx5e_channel      *channel;
 	int                        tc;
 	struct mlx5e_ico_wqe_info *ico_wqe_info;
+
+#ifdef CONFIG_MLX5_CAPI
+	int pe_id;
+#endif
 } ____cacheline_aligned_in_smp;
 
 static inline bool mlx5e_sq_has_room_for(struct mlx5e_sq *sq, u16 n)
@@ -545,6 +553,11 @@ struct mlx5e_priv {
 	struct mlx5e_stats         stats;
 	struct mlx5e_tstamp        tstamp;
 	u16 q_counter;
+
+#ifdef CONFIG_MLX5_CAPI
+	struct ctx_node           *ctx_node;
+	u16                        num_uar;
+#endif
 };
 
 enum mlx5e_link_mode {
@@ -724,4 +737,10 @@ int mlx5e_rx_flow_steer(struct net_device *dev, const struct sk_buff *skb,
 
 u16 mlx5e_get_max_inline_cap(struct mlx5_core_dev *mdev);
 
+#ifdef CONFIG_MLX5_CAPI
+int mlx5_capi_remove_en_pe(struct mlx5e_priv *priv);
+int mlx5_capi_obtain_en_pe(struct mlx5_core_dev *mdev,
+			   struct mlx5e_priv *priv,
+			   int *pe_id);
+#endif
 #endif /* __MLX5_EN_H__ */

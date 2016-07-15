@@ -5,11 +5,15 @@
 #include <linux/pci.h>
 #include <linux/msi.h>
 #include "mlx5_core.h"
+#ifdef CONFIG_MLX5_CORE_EN
+#include "en.h"
+#endif
 
 #define CXL_PCI_VSEC_ID  0x1280
 #define CXL_READ_VSEC_MODE_CONTROL(dev, vsec, dest) \
 		pci_read_config_byte(dev, vsec + 0xa, dest)
 #define CXL_VSEC_PROTOCOL_ENABLE 0x01
+#define MLX5_UAR_PER_PE 16
 
 static int find_cxl_vsec(struct pci_dev *dev)
 {
@@ -89,6 +93,91 @@ void mlx5_configure_msix_table_capi(struct pci_dev *pdev)
 	}
 }
 
+static int mlx5_capi_create_pe(struct mlx5_core_dev *mdev,
+			struct cxl_context **ctx)
+{
+	struct pci_dev *pdev = mdev->pdev;
+	
+	*ctx = cxl_dev_context_init(pdev);
+	if (!(*ctx))
+		return -ENODEV;
+	cxl_start_context(*ctx, 0, NULL); 
+
+	return 0;			
+}
+
+static void mlx5_capi_destroy_pe(struct cxl_context *ctx)
+{
+	if (ctx) {
+		cxl_stop_context(ctx);
+		cxl_release_context(ctx);
+	}
+}
+
+#ifdef CONFIG_MLX5_CORE_EN
+int mlx5_capi_remove_en_pe(struct mlx5e_priv *priv)
+{
+	struct ctx_node  *ctx_node, *tmp;
+
+	list_for_each_entry_safe(ctx_node, tmp,
+				 &priv->ctx_node->list, list) {
+		mlx5_capi_destroy_pe(ctx_node->ctx);
+		list_del(&ctx_node->list);
+		kfree(ctx_node);	
+	}
+
+	/* clean the head */
+	mlx5_capi_destroy_pe(priv->ctx_node->ctx);
+	kfree(priv->ctx_node);
+	
+	priv->num_uar = 0;
+        priv->ctx_node = NULL;	
+
+	return 0;
+}
+
+int mlx5_capi_obtain_en_pe(struct mlx5_core_dev *mdev,
+			   struct mlx5e_priv *priv,
+			   int *pe_id)
+{
+	struct cxl_context *ctx;
+	struct ctx_node    *ctx_node = NULL;
+	int err;
+
+	if (!get_cxl_mode(mdev)) {
+		*pe_id = 0;
+		return 0;
+	}
+
+	if (!(priv->num_uar & (MLX5_UAR_PER_PE-1))) {
+		/* need new pe */
+		err = mlx5_capi_create_pe(mdev, &ctx);
+		if (err)
+			return err;
+
+		ctx_node = kzalloc(sizeof(*ctx_node), GFP_KERNEL);
+		if (!ctx_node) {
+			mlx5_capi_destroy_pe(ctx);
+			return -ENOMEM;
+		}
+		INIT_LIST_HEAD(&ctx_node->list);
+
+		ctx_node->ctx = ctx;
+		
+		if (priv->ctx_node)
+			list_add(&ctx_node->list, &priv->ctx_node->list);
+
+	}
+
+	/* save the stack's head if new pe is created */
+	if (ctx_node)
+		priv->ctx_node = ctx_node;
+
+	*pe_id = cxl_process_element(priv->ctx_node->ctx);
+	return 0;
+}
+#endif /* CONFIG_MLX5_CORE_EN */
+
 int mlx5_capi_cleanup(struct mlx5_core_dev *dev,
 		      struct pci_dev *pdev)
 {
@@ -109,8 +198,7 @@ int mlx5_capi_cleanup(struct mlx5_core_dev *dev,
 	}
 
 	cxl_stop_context(capi_context);
-	cxl_stop_context(capi->direct_ctx);		
-	cxl_release_context(capi->direct_ctx);
+	mlx5_capi_destroy_pe(capi->direct_ctx);	
 	return 0;
 }
 

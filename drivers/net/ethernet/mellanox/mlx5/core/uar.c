@@ -247,8 +247,13 @@ int mlx5_free_uuars(struct mlx5_core_dev *dev, struct mlx5_uuar_info *uuari)
 	return 0;
 }
 
+#ifdef CONFIG_MLX5_CAPI
+int mlx5_alloc_map_uar(struct mlx5_core_dev *mdev, struct mlx5_uar *uar,
+		       bool map_wc, int pe_id)
+#else
 int mlx5_alloc_map_uar(struct mlx5_core_dev *mdev, struct mlx5_uar *uar,
 		       bool map_wc)
+#endif
 {
 	phys_addr_t pfn;
 	phys_addr_t uar_bar_start;
@@ -256,7 +261,7 @@ int mlx5_alloc_map_uar(struct mlx5_core_dev *mdev, struct mlx5_uar *uar,
 
 #ifdef CONFIG_MLX5_CAPI
 	/* Called by ethernet code */
-	err = mlx5_cmd_alloc_uar(mdev, &uar->index, mdev->priv.capi.default_pe);
+	err = mlx5_cmd_alloc_uar(mdev, &uar->index, pe_id);
 #else
 	err = mlx5_cmd_alloc_uar(mdev, &uar->index);
 #endif

@@ -188,15 +188,29 @@ int mlx5e_alloc_rx_wqe(struct mlx5e_rq *rq, struct mlx5e_rx_wqe *wqe, u16 ix)
 	if (unlikely(!skb))
 		return -ENOMEM;
 
+#ifdef CONFIG_MLX5_CAPI
+	if (get_cxl_mode(rq->priv->mdev))
+		dma_addr = (dma_addr_t) skb->data;
+	else {
+		dma_addr = dma_map_single(rq->pdev,
+					  /* hw start padding */
+					  skb->data,
+					  /* hw end padding */
+					  rq->wqe_sz,
+					  DMA_FROM_DEVICE);
+		if (unlikely(dma_mapping_error(rq->pdev, dma_addr)))
+			goto err_free_skb;
+	}
+#else
 	dma_addr = dma_map_single(rq->pdev,
 				  /* hw start padding */
 				  skb->data,
 				  /* hw end padding */
 				  rq->wqe_sz,
 				  DMA_FROM_DEVICE);
-
 	if (unlikely(dma_mapping_error(rq->pdev, dma_addr)))
 		goto err_free_skb;
+#endif
 
 	*((dma_addr_t *)skb->cb) = dma_addr;
 	wqe->data.addr = cpu_to_be64(dma_addr);
@@ -392,12 +406,26 @@ static int mlx5e_alloc_and_map_page(struct mlx5e_rq *rq,
 		return -ENOMEM;
 
 	wi->umr.dma_info[i].page = page;
+#ifdef CONFIG_MLX5_CAPI
+	if (get_cxl_mode(rq->priv->mdev))
+		wi->umr.dma_info[i].addr = (u64)(page_address(page));
+	else {
+		wi->umr.dma_info[i].addr = dma_map_page(rq->pdev, page, 0, PAGE_SIZE,
+							PCI_DMA_FROMDEVICE);
+		if (unlikely(dma_mapping_error(rq->pdev, wi->umr.dma_info[i].addr))) {
+			put_page(page);
+			return -ENOMEM;
+		}
+	}
+#else
 	wi->umr.dma_info[i].addr = dma_map_page(rq->pdev, page, 0, PAGE_SIZE,
 						PCI_DMA_FROMDEVICE);
 	if (unlikely(dma_mapping_error(rq->pdev, wi->umr.dma_info[i].addr))) {
 		put_page(page);
 		return -ENOMEM;
 	}
+#endif
+
 	wi->umr.mtt[i] = cpu_to_be64(wi->umr.dma_info[i].addr | MLX5_EN_WR);
 
 	return 0;
@@ -425,10 +453,21 @@ static int mlx5e_alloc_rx_fragmented_mpwqe(struct mlx5e_rq *rq,
 		goto err_free_umr;
 
 	wi->umr.mtt = PTR_ALIGN(wi->umr.mtt_no_align, MLX5_UMR_ALIGN);
+#ifdef CONFIG_MLX5_CAPI
+	if (get_cxl_mode(rq->priv->mdev))
+		wi->umr.mtt_addr = (dma_addr_t) wi->umr.mtt;
+	else {
+		wi->umr.mtt_addr = dma_map_single(rq->pdev, wi->umr.mtt, mtt_sz,
+						  PCI_DMA_TODEVICE);
+		if (unlikely(dma_mapping_error(rq->pdev, wi->umr.mtt_addr)))
+			goto err_free_mtt;
+	}
+#else
 	wi->umr.mtt_addr = dma_map_single(rq->pdev, wi->umr.mtt, mtt_sz,
 					  PCI_DMA_TODEVICE);
 	if (unlikely(dma_mapping_error(rq->pdev, wi->umr.mtt_addr)))
 		goto err_free_mtt;
+#endif
 
 	for (i = 0; i < MLX5_MPWRQ_PAGES_PER_WQE; i++) {
 		if (unlikely(mlx5e_alloc_and_map_page(rq, wi, i)))
@@ -450,12 +489,24 @@ static int mlx5e_alloc_rx_fragmented_mpwqe(struct mlx5e_rq *rq,
 
 err_unmap:
 	while (--i >= 0) {
+#ifdef CONFIG_MLX5_CAPI
+		if (get_cxl_mode(rq->priv->mdev))
+			goto skip_unmap_page;
+#endif
 		dma_unmap_page(rq->pdev, wi->umr.dma_info[i].addr, PAGE_SIZE,
 			       PCI_DMA_FROMDEVICE);
+#ifdef CONFIG_MLX5_CAPI
+skip_unmap_page:
+#endif
 		page_ref_sub(wi->umr.dma_info[i].page,
 			     mlx5e_mpwqe_strides_per_page(rq));
 		put_page(wi->umr.dma_info[i].page);
 	}
+
+#ifdef CONFIG_MLX5_CAPI
+	if (get_cxl_mode(rq->priv->mdev))
+		goto err_free_mtt;
+#endif
 	dma_unmap_single(rq->pdev, wi->umr.mtt_addr, mtt_sz, PCI_DMA_TODEVICE);
 
 err_free_mtt:
@@ -475,13 +526,30 @@ void mlx5e_free_rx_fragmented_mpwqe(struct mlx5e_rq *rq,
 	int i;
 
 	for (i = 0; i < MLX5_MPWRQ_PAGES_PER_WQE; i++) {
+#ifdef CONFIG_MLX5_CAPI
+	if (get_cxl_mode(rq->priv->mdev))
+		goto skip_unmap_page;
+#endif
 		dma_unmap_page(rq->pdev, wi->umr.dma_info[i].addr, PAGE_SIZE,
 			       PCI_DMA_FROMDEVICE);
+#ifdef CONFIG_MLX5_CAPI
+skip_unmap_page:
+#endif
 		page_ref_sub(wi->umr.dma_info[i].page,
 			mlx5e_mpwqe_strides_per_page(rq) - wi->skbs_frags[i]);
 		put_page(wi->umr.dma_info[i].page);
 	}
+
+#ifdef CONFIG_MLX5_CAPI
+	if (get_cxl_mode(rq->priv->mdev))
+		goto skip_unmap_single;
+#endif
+
 	dma_unmap_single(rq->pdev, wi->umr.mtt_addr, mtt_sz, PCI_DMA_TODEVICE);
+
+#ifdef CONFIG_MLX5_CAPI
+skip_unmap_single:
+#endif
 	kfree(wi->umr.mtt_no_align);
 	kfree(wi->umr.dma_info);
 }
@@ -515,12 +583,25 @@ static int mlx5e_alloc_rx_linear_mpwqe(struct mlx5e_rq *rq,
 	if (unlikely(!wi->dma_info.page))
 		return -ENOMEM;
 
+#ifdef CONFIG_MLX5_CAPI
+	if (get_cxl_mode(rq->priv->mdev))
+		wi->dma_info.addr = (u64)(page_address(wi->dma_info.page));
+	else {
+		wi->dma_info.addr = dma_map_page(rq->pdev, wi->dma_info.page, 0,
+						 rq->wqe_sz, PCI_DMA_FROMDEVICE);
+		if (unlikely(dma_mapping_error(rq->pdev, wi->dma_info.addr))) {
+			put_page(wi->dma_info.page);
+			return -ENOMEM;
+		}
+	}
+#else
 	wi->dma_info.addr = dma_map_page(rq->pdev, wi->dma_info.page, 0,
 					 rq->wqe_sz, PCI_DMA_FROMDEVICE);
 	if (unlikely(dma_mapping_error(rq->pdev, wi->dma_info.addr))) {
 		put_page(wi->dma_info.page);
 		return -ENOMEM;
 	}
+#endif
 
 	/* We split the high-order page into order-0 ones and manage their
 	 * reference counter to minimize the memory held by small skb fragments
@@ -548,8 +629,18 @@ void mlx5e_free_rx_linear_mpwqe(struct mlx5e_rq *rq,
 {
 	int i;
 
+#ifdef CONFIG_MLX5_CAPI
+	if (get_cxl_mode(rq->priv->mdev))
+		goto skip_unmap_page;
+#endif
+
 	dma_unmap_page(rq->pdev, wi->dma_info.addr, rq->wqe_sz,
 		       PCI_DMA_FROMDEVICE);
+
+#ifdef CONFIG_MLX5_CAPI
+skip_unmap_page:
+#endif
+
 	for (i = 0; i < MLX5_MPWRQ_PAGES_PER_WQE; i++) {
 		page_ref_sub(&wi->dma_info.page[i],
 			mlx5e_mpwqe_strides_per_page(rq) - wi->skbs_frags[i]);
@@ -769,10 +860,18 @@ void mlx5e_handle_rx_cqe(struct mlx5e_rq *rq, struct mlx5_cqe64 *cqe)
 	prefetch(skb->data);
 	rq->skb[wqe_counter] = NULL;
 
+#ifdef CONFIG_MLX5_CAPI
+	if (get_cxl_mode(rq->priv->mdev))
+		goto skip_unmap_single;	
+#endif
 	dma_unmap_single(rq->pdev,
 			 *((dma_addr_t *)skb->cb),
 			 rq->wqe_sz,
 			 DMA_FROM_DEVICE);
+
+#ifdef CONFIG_MLX5_CAPI
+skip_unmap_single:
+#endif
 
 	if (unlikely((cqe->op_own >> 4) != MLX5_CQE_RESP_SEND)) {
 		rq->stats.wqe_err++;

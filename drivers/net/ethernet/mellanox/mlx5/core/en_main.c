@@ -395,17 +395,20 @@ static int mlx5e_enable_rq(struct mlx5e_rq *rq, struct mlx5e_rq_param *param)
 	MLX5_SET(rqc,  rqc, vsd, priv->params.vlan_strip_disable);
 	MLX5_SET(wq,   wq,  log_wq_pg_sz,	rq->wq_ctrl.buf.page_shift -
 						MLX5_ADAPTER_PAGE_SHIFT);
-	MLX5_SET64(wq, wq,  dbr_addr,		rq->wq_ctrl.db.dma);
 
 #ifdef CONFIG_MLX5_CAPI
-	if (get_cxl_mode(mdev))
+	if (get_cxl_mode(mdev)) {
 		MLX5_SET(wq, wq, pe_id,
-			 cpu_to_be32(mdev->priv.capi.default_pe)); 
+			 mdev->priv.capi.default_pe);
+		MLX5_SET64(wq, wq,  dbr_addr,           rq->wq_ctrl.db.virt_addr);
+	} else
+		MLX5_SET64(wq, wq,  dbr_addr,           rq->wq_ctrl.db.dma);
 
 	mlx5_fill_page_array(mdev,
 			     &rq->wq_ctrl.buf,
 			     (__be64 *)MLX5_ADDR_OF(wq, wq, pas));
 #else
+	MLX5_SET64(wq, wq,  dbr_addr,           rq->wq_ctrl.db.dma);
 	mlx5_fill_page_array(&rq->wq_ctrl.buf,
 			     (__be64 *)MLX5_ADDR_OF(wq, wq, pas));
 #endif
@@ -590,7 +593,18 @@ static int mlx5e_create_sq(struct mlx5e_channel *c,
 	void *sqc_wq = MLX5_ADDR_OF(sqc, sqc, wq);
 	int err;
 
+#ifdef CONFIG_MLX5_CAPI
+	err = mlx5_capi_obtain_en_pe(mdev, priv, &sq->pe_id);
+	if (err)
+		return err;
+
+	err = mlx5_alloc_map_uar(mdev, &sq->uar, true, sq->pe_id);
+	if (!err)
+		priv->num_uar ++;
+#else
 	err = mlx5_alloc_map_uar(mdev, &sq->uar, true);
+#endif
+
 	if (err)
 		return err;
 
@@ -700,17 +714,19 @@ static int mlx5e_enable_sq(struct mlx5e_sq *sq, struct mlx5e_sq_param *param)
 	MLX5_SET(wq,   wq, uar_page,      sq->uar.index);
 	MLX5_SET(wq,   wq, log_wq_pg_sz,  sq->wq_ctrl.buf.page_shift -
 					  MLX5_ADAPTER_PAGE_SHIFT);
-	MLX5_SET64(wq, wq, dbr_addr,      sq->wq_ctrl.db.dma);
 
 #ifdef CONFIG_MLX5_CAPI
-	if (get_cxl_mode(mdev))
-		MLX5_SET(wq, wq, pe_id,
-			 cpu_to_be32(mdev->priv.capi.default_pe)); 
+	if (get_cxl_mode(mdev)) {
+		MLX5_SET(wq, wq, pe_id, sq->pe_id);
+		MLX5_SET64(wq, wq, dbr_addr,      sq->wq_ctrl.db.virt_addr);
+	} else
+		MLX5_SET64(wq, wq, dbr_addr,      sq->wq_ctrl.db.dma);
 
 	mlx5_fill_page_array(mdev,
 			     &sq->wq_ctrl.buf,
 			     (__be64 *)MLX5_ADDR_OF(wq, wq, pas));
 #else
+	MLX5_SET64(wq, wq, dbr_addr,      sq->wq_ctrl.db.dma);
 	mlx5_fill_page_array(&sq->wq_ctrl.buf,
 			     (__be64 *)MLX5_ADDR_OF(wq, wq, pas));
 #endif
@@ -908,14 +924,17 @@ static int mlx5e_enable_cq(struct mlx5e_cq *cq, struct mlx5e_cq_param *param)
 
 #ifdef CONFIG_MLX5_CAPI
 	if (get_cxl_mode(mdev)) {
-		cq_in = (mlx5_create_cq_mbox_in *)in;
+		cq_in = (struct mlx5_create_cq_mbox_in *)in;
 		cq_in->pe_id = cpu_to_be32(mdev->priv.capi.default_pe);
-	}
+		MLX5_SET64(cqc, cqc, dbr_addr,      cq->wq_ctrl.db.virt_addr);
+	} else
+		MLX5_SET64(cqc, cqc, dbr_addr,      cq->wq_ctrl.db.dma);
 
 	mlx5_fill_page_array(mdev,
 			     &cq->wq_ctrl.buf,
 			     (__be64 *)MLX5_ADDR_OF(create_cq_in, in, pas));
 #else
+	MLX5_SET64(cqc, cqc, dbr_addr,      cq->wq_ctrl.db.dma);
 	mlx5_fill_page_array(&cq->wq_ctrl.buf,
 			     (__be64 *)MLX5_ADDR_OF(create_cq_in, in, pas));
 #endif
@@ -926,7 +945,6 @@ static int mlx5e_enable_cq(struct mlx5e_cq *cq, struct mlx5e_cq_param *param)
 	MLX5_SET(cqc,   cqc, uar_page,      mcq->uar->index);
 	MLX5_SET(cqc,   cqc, log_page_size, cq->wq_ctrl.buf.page_shift -
 					    MLX5_ADAPTER_PAGE_SHIFT);
-	MLX5_SET64(cqc, cqc, dbr_addr,      cq->wq_ctrl.db.dma);
 
 	err = mlx5_core_create_cq(mdev, mcq, in, inlen);
 
@@ -1706,6 +1724,11 @@ int mlx5e_open_locked(struct net_device *netdev)
 
 	set_bit(MLX5E_STATE_OPENED, &priv->state);
 
+#ifdef CONFIG_CAPI_MLX5
+	priv->num_uar = 0;
+	priv->ctx_node = NULL;
+#endif
+
 	mlx5e_netdev_set_tcs(netdev);
 
 	num_txqs = priv->params.num_channels * priv->params.num_tc;
@@ -1776,6 +1799,10 @@ int mlx5e_close_locked(struct net_device *netdev)
 	netif_carrier_off(priv->netdev);
 	mlx5e_redirect_rqts(priv);
 	mlx5e_close_channels(priv);
+
+#ifdef CONFIG_MLX5_CAPI
+	mlx5_capi_remove_en_pe(priv);
+#endif
 
 	return 0;
 }
@@ -3085,7 +3112,12 @@ static void *mlx5e_create_netdev(struct mlx5_core_dev *mdev)
 	if (!priv->wq)
 		goto err_free_netdev;
 
+#ifdef CONFIG_MLX5_CAPI
+	err = mlx5_alloc_map_uar(mdev, &priv->cq_uar, false,
+				 mdev->priv.capi.default_pe);
+#else
 	err = mlx5_alloc_map_uar(mdev, &priv->cq_uar, false);
+#endif
 	if (err) {
 		mlx5_core_err(mdev, "alloc_map uar failed, %d\n", err);
 		goto err_destroy_wq;
