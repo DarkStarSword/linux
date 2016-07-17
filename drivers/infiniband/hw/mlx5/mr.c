@@ -741,7 +741,7 @@ static int use_umr(int order)
 
 static int dma_map_mr_pas(struct mlx5_ib_dev *dev, struct ib_umem *umem,
 			  int npages, int page_shift, int *size,
-			  __be64 **mr_pas, dma_addr_t *dma)
+			  __be64 **mr_pas, dma_addr_t *dma, int access_flags)
 {
 	__be64 *pas;
 
@@ -758,7 +758,10 @@ static int dma_map_mr_pas(struct mlx5_ib_dev *dev, struct ib_umem *umem,
 	pas = PTR_ALIGN(*mr_pas, MLX5_UMR_ALIGN);
 
 #ifdef CONFIG_MLX5_CAPI
-	mlx5_ib_populate_pas(dev, umem, page_shift, pas, MLX5_IB_MTT_PRESENT, 0);
+	if (get_cxl_mode(dev->mdev) && (access_flags & IB_ACCESS_ON_DEMAND))
+		mlx5_ib_populate_pas(dev, umem, page_shift, pas, MLX5_IB_MTT_PRESENT, 0);
+	else
+		mlx5_ib_populate_pas(dev, umem, page_shift, pas, MLX5_IB_MTT_PRESENT, 1);
 #else
 	mlx5_ib_populate_pas(dev, umem, page_shift, pas, MLX5_IB_MTT_PRESENT);
 #endif
@@ -958,8 +961,13 @@ static struct mlx5_ib_mr *reg_umr(struct ib_pd *pd, struct ib_umem *umem,
 	if (!mr)
 		return ERR_PTR(-EAGAIN);
 
+#ifdef CONFIG_MLX5_CAPI
+	err = dma_map_mr_pas(dev, umem, npages, page_shift, &size, &mr_pas,
+			     &dma, access_flags);
+#else
 	err = dma_map_mr_pas(dev, umem, npages, page_shift, &size, &mr_pas,
 			     &dma);
+#endif
 	if (err)
 		goto free_mr;
 
@@ -1159,10 +1167,14 @@ static struct mlx5_ib_mr *reg_create(struct ib_mr *ibmr, struct ib_pd *pd,
 	}
 
 #ifdef CONFIG_MLX5_CAPI
-	/* Huy to do with ODP flag for pin/nonpin */
-	mlx5_ib_populate_pas(dev, umem, page_shift, in->pas,
-			     pg_cap ? MLX5_IB_MTT_PRESENT : 0,
-			     0);
+	if (get_cxl_mode(dev->mdev) && (access_flags & IB_ACCESS_ON_DEMAND))
+		mlx5_ib_populate_pas(dev, umem, page_shift, in->pas,
+				     pg_cap ? MLX5_IB_MTT_PRESENT : 0,
+				     0);
+	else
+		mlx5_ib_populate_pas(dev, umem, page_shift, in->pas,
+				     pg_cap ? MLX5_IB_MTT_PRESENT : 0,
+				     1);
 #else
 	mlx5_ib_populate_pas(dev, umem, page_shift, in->pas,
 			     pg_cap ? MLX5_IB_MTT_PRESENT : 0);
@@ -1289,7 +1301,7 @@ struct ib_mr *mlx5_ib_reg_user_mr(struct ib_pd *pd, u64 start, u64 length,
 
 error:
 #ifdef CONFIG_MLX5_CAPI
-	if (get_cxl_mode(dev->mdev))
+	if (get_cxl_mode(dev->mdev) && (access_flags & IB_ACCESS_ON_DEMAND))
 		ib_umem_release_no_pin(umem);
 	else
 		ib_umem_release(umem);
@@ -1354,8 +1366,13 @@ static int rereg_umr(struct ib_pd *pd, struct mlx5_ib_mr *mr, u64 virt_addr,
 	umrwr.wr.send_flags = MLX5_IB_SEND_UMR_FAIL_IF_FREE;
 
 	if (flags & IB_MR_REREG_TRANS) {
+#ifdef CONFIG_MLX5_CAPI
+		err = dma_map_mr_pas(dev, mr->umem, npages, page_shift, &size,
+				     &mr_pas, &dma, access_flags);
+#else
 		err = dma_map_mr_pas(dev, mr->umem, npages, page_shift, &size,
 				     &mr_pas, &dma);
+#endif
 		if (err)
 			return err;
 
@@ -1589,6 +1606,10 @@ int mlx5_ib_dereg_mr(struct ib_mr *ibmr)
 	int npages = mr->npages;
 	struct ib_umem *umem = mr->umem;
 
+#ifdef CONFIG_MLX5_CAPI
+	int access_flags = mr->access_flags;
+#endif
+
 #ifdef CONFIG_INFINIBAND_ON_DEMAND_PAGING
 	if (umem && umem->odp_data) {
 		/* Prevent new page faults from succeeding */
@@ -1615,7 +1636,7 @@ int mlx5_ib_dereg_mr(struct ib_mr *ibmr)
 
 	if (umem) {
 #ifdef CONFIG_MLX5_CAPI
-		if (get_cxl_mode(dev->mdev))
+		if (get_cxl_mode(dev->mdev) && (access_flags & IB_ACCESS_ON_DEMAND))
 			ib_umem_release_no_pin(umem);
 		else
 			ib_umem_release(umem);
